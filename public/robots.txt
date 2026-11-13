@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /checkout
+Disallow: /compra/
+Disallow: /login
+Disallow: /registro
+
+Sitemap: https://papitadulce.example.cl/sitemap.xml

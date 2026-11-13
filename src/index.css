@@ -1,0 +1,38 @@
+/* Mensajes de validación de los formularios de reserva y contacto */
+.ferr {
+  display: block;
+  margin-top: 6px;
+  font-size: .78rem;
+  color: var(--primary);
+}
+
+.fctrl.is-invalid {
+  border-color: var(--primary);
+}
+
+/* Evita que el modal quede corrido a la izquierda */
+.modal {
+  padding-right: 0 !important;
+}
+
+/* Boleta de las órdenes (panel admin) */
+.tabla-boleta th {
+  font-size: 12px;
+}
+
+/* Al imprimir la boleta solo se muestra la boleta, sin el resto de la página */
+@media print {
+  body.imprimiendo-boleta * {
+    visibility: hidden !important;
+  }
+  body.imprimiendo-boleta .boleta-imprimible,
+  body.imprimiendo-boleta .boleta-imprimible * {
+    visibility: visible !important;
+  }
+  body.imprimiendo-boleta .boleta-imprimible {
+    position: fixed;
+    inset: 0;
+    padding: 24px;
+    background: #fff;
+  }
+}

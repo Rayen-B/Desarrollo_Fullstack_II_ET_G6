@@ -1,0 +1,16 @@
+package proyecto.nutricion_service.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class NutrientesDTO {
+    private Double calorias;
+    private Double azucares;
+    private Double grasas;
+    private Double proteinas;
+    private Double carbohidratos;
+}

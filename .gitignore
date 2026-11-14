@@ -1,6 +1,26 @@
+# Dependencias y archivos compilados
 node_modules/
 dist/
 coverage/
+target/
+out/
+*.class
+
+# Editores (IntelliJ guarda aquí las variables de entorno, como la clave de Spoonacular)
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# Claves y configuración local: nunca se suben
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Sistema
 *.log
 .DS_Store
-.vscode/
+Thumbs.db

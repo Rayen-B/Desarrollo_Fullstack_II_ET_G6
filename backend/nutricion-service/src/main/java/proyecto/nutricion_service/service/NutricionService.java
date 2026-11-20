@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import proyecto.nutricion_service.client.CatalogoClient;
 import proyecto.nutricion_service.client.SpoonacularClient;
 import proyecto.nutricion_service.client.dto.SpoonIngredienteDTO;
 import proyecto.nutricion_service.dto.ItemRecetaDTO;
@@ -46,6 +47,9 @@ public class NutricionService {
     @Autowired
     private SpoonacularClient spoonacularClient;
 
+    @Autowired
+    private CatalogoClient catalogoClient;
+
     @Value("${spoonacular.api-key}")
     private String apiKey;
 
@@ -58,8 +62,9 @@ public class NutricionService {
     }
 
     // Devuelve el cálculo guardado si la receta no cambió; si es nueva o cambió, consulta Spoonacular y lo guarda
-    public NutricionResponseDTO calcular(String codigo, RecetaRequestDTO receta, boolean forzar) {
+    public NutricionResponseDTO calcular(String codigo, RecetaRequestDTO recetaEnviada, boolean forzar) {
         String codigoProducto = normalizarCodigo(codigo);
+        RecetaRequestDTO receta = recetaDe(codigoProducto, recetaEnviada);
         Map<String, Ingrediente> ingredientes = buscarIngredientes(receta.getItems());
         String huella = calcularHuella(receta.getItems(), ingredientes);
 
@@ -99,6 +104,26 @@ public class NutricionService {
         NutricionProducto saved = nutricionRepository.save(nutricion);
         log.info("Nutrición de {} guardada: {} kcal", codigoProducto, saved.getCalorias());
         return mapToResponse(saved, false);
+    }
+
+    // Si no llega la receta en el cuerpo, se le pide a Catálogo
+    public RecetaRequestDTO recetaDe(String codigoProducto, RecetaRequestDTO recetaEnviada) {
+        if (recetaEnviada != null && recetaEnviada.getItems() != null && !recetaEnviada.getItems().isEmpty()) {
+            return recetaEnviada;
+        }
+        RecetaRequestDTO receta;
+        try {
+            receta = catalogoClient.obtenerReceta(codigoProducto);
+        } catch (FeignException.NotFound e) {
+            throw new RecursoNoEncontradoException("El producto " + codigoProducto + " no existe en el catálogo");
+        } catch (FeignException e) {
+            log.warn("Catálogo respondió {} al pedir la receta de {}", e.status(), codigoProducto);
+            throw new ServicioExternoException("No se pudo consultar el catálogo en este momento");
+        }
+        if (receta == null || receta.getItems() == null || receta.getItems().isEmpty()) {
+            throw new DatoInvalidoException("El producto " + codigoProducto + " no tiene receta en el catálogo");
+        }
+        return receta;
     }
 
     // Convierte la receta en líneas en inglés para Spoonacular: "300 g flour", "4 eggs"

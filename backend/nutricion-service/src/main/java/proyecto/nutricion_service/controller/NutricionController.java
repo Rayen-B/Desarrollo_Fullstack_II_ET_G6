@@ -34,14 +34,15 @@ public class NutricionController {
     }
 
     @PostMapping("/{codigo}")
-    @Operation(summary = "Calcular la nutrición de un producto", description = "Si la receta no cambió devuelve el cálculo guardado; si es nueva o cambió, consulta Spoonacular y guarda el resultado")
+    @Operation(summary = "Calcular la nutrición de un producto", description = "Si no se envía la receta, se pide a Catálogo con OpenFeign. Si la receta no cambió devuelve el cálculo guardado; si es nueva o cambió, consulta Spoonacular y guarda el resultado")
     @ApiResponse(responseCode = "200", description = "Información nutricional calculada o leída desde la base de datos")
     @ApiResponse(responseCode = "400", description = "Receta inválida o con insumos sin nombre en inglés", content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class), examples = @ExampleObject(value = "{\"timestamp\": \"2026-11-13T19:49:46\", \"status\": 400, \"mensaje\": \"Estos insumos no tienen nombre en inglés registrado: vainilla\"}")))
-    @ApiResponse(responseCode = "503", description = "Spoonacular no disponible, clave inválida o límite diario alcanzado", content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class), examples = @ExampleObject(value = "{\"timestamp\": \"2026-11-13T19:49:46\", \"status\": 503, \"mensaje\": \"Se alcanzó el límite diario de consultas a Spoonacular\"}")))
+    @ApiResponse(responseCode = "404", description = "El producto no existe en el catálogo", content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class), examples = @ExampleObject(value = "{\"timestamp\": \"2026-11-13T19:49:46\", \"status\": 404, \"mensaje\": \"El producto TC999 no existe en el catálogo\"}")))
+    @ApiResponse(responseCode = "503", description = "Catálogo o Spoonacular no disponibles, clave inválida o límite diario alcanzado", content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class), examples = @ExampleObject(value = "{\"timestamp\": \"2026-11-13T19:49:46\", \"status\": 503, \"mensaje\": \"Se alcanzó el límite diario de consultas a Spoonacular\"}")))
     public ResponseEntity<NutricionResponseDTO> calcular(
             @Parameter(description = "Código del producto, por ejemplo TC001") @PathVariable String codigo,
             @Parameter(description = "true para recalcular aunque la receta no haya cambiado") @RequestParam(defaultValue = "false") boolean forzar,
-            @Parameter(description = "Insumos y cantidades de una unidad completa del producto") @Valid @RequestBody RecetaRequestDTO receta) {
+            @Parameter(description = "Opcional: insumos y cantidades de una unidad completa. Si no viene, se usa la receta del catálogo") @Valid @RequestBody(required = false) RecetaRequestDTO receta) {
         return ResponseEntity.ok(nutricionService.calcular(codigo, receta, forzar));
     }
 }

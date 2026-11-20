@@ -10,6 +10,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import proyecto.nutricion_service.client.CatalogoClient;
 import proyecto.nutricion_service.client.SpoonacularClient;
 import proyecto.nutricion_service.client.dto.SpoonIngredienteDTO;
 import proyecto.nutricion_service.dto.ItemRecetaDTO;
@@ -41,6 +42,9 @@ class NutricionServiceTest {
 
     @Mock
     private SpoonacularClient spoonacularClient;
+
+    @Mock
+    private CatalogoClient catalogoClient;
 
     @InjectMocks
     private NutricionService nutricionService;
@@ -93,6 +97,50 @@ class NutricionServiceTest {
         assertEquals(List.of("gluten", "huevo"), resultado.getAlergenos());
         assertFalse(resultado.isDesdeCache());
         verify(nutricionRepository, times(1)).save(any(NutricionProducto.class));
+    }
+
+    @Test
+    void calcular_SinRecetaEnElCuerpo_LaPideACatalogo() {
+        prepararIngredientes();
+        when(catalogoClient.obtenerReceta("TC001")).thenReturn(receta);
+        when(nutricionRepository.findByCodigoProducto("TC001")).thenReturn(Optional.empty());
+        when(spoonacularClient.analizarIngredientes(anyString(), anyMap())).thenReturn(List.of(ingredienteSpoon("300 g flour", 100, 0)));
+        when(nutricionRepository.save(any(NutricionProducto.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        NutricionResponseDTO resultado = nutricionService.calcular("tc001", null, false);
+
+        assertEquals("TC001", resultado.getCodigoProducto());
+        verify(catalogoClient).obtenerReceta("TC001");
+    }
+
+    @Test
+    void calcular_ConRecetaEnElCuerpo_NoLlamaACatalogo() {
+        assertSame(receta, nutricionService.recetaDe("TC001", receta));
+        verifyNoInteractions(catalogoClient);
+    }
+
+    @Test
+    void calcular_ProductoQueNoExisteEnCatalogo_Lanza404() {
+        Request request = Request.create(Request.HttpMethod.GET, "/api/v1/productos/XX1/receta", Map.of(), null, StandardCharsets.UTF_8, null);
+        when(catalogoClient.obtenerReceta("XX1")).thenThrow(new FeignException.NotFound("no existe", request, null, null));
+
+        assertThrows(RecursoNoEncontradoException.class, () -> nutricionService.calcular("XX1", null, false));
+        verifyNoInteractions(spoonacularClient);
+    }
+
+    @Test
+    void calcular_CatalogoCaido_Lanza503() {
+        Request request = Request.create(Request.HttpMethod.GET, "/api/v1/productos/TC001/receta", Map.of(), null, StandardCharsets.UTF_8, null);
+        when(catalogoClient.obtenerReceta("TC001")).thenThrow(new FeignException.ServiceUnavailable("caido", request, null, null));
+
+        assertThrows(ServicioExternoException.class, () -> nutricionService.calcular("TC001", null, false));
+    }
+
+    @Test
+    void calcular_ProductoSinRecetaEnCatalogo_Lanza400() {
+        when(catalogoClient.obtenerReceta("BEB001")).thenReturn(new RecetaRequestDTO(List.of()));
+
+        assertThrows(DatoInvalidoException.class, () -> nutricionService.calcular("BEB001", null, false));
     }
 
     @Test

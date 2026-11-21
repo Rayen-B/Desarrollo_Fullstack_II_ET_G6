@@ -35,10 +35,13 @@ public class StockService {
         return new VerificacionDTO(true);
     }
 
+    // Siempre se bloquean primero los insumos y después los productos, en el mismo orden, para que dos ventas no se traben
     @Transactional
     public MovimientosDTO descontar(VentaRequestDTO request) {
-        List<Insumo> insumos = insumoRepository.findAll();
-        Map<String, Producto> productos = productosDe(request.getItems());
+        List<Insumo> insumos = insumoRepository.findTodosParaActualizar();
+        List<String> codigos = request.getItems().stream().map(i -> i.getCodigo().trim().toUpperCase()).distinct().toList();
+        Map<String, Producto> productos = productoRepository.findParaActualizar(codigos).stream()
+                .collect(Collectors.toMap(Producto::getCodigo, Function.identity()));
         CalculoStock.Resultado resultado = CalculoStock.simular(request.getItems(), productos, stockDe(insumos));
         if (!resultado.ok()) throw new ConflictoException("Ya no hay stock suficiente de " + resultado.faltante() + ".");
 
@@ -57,14 +60,19 @@ public class StockService {
                 || usados.values().stream().anyMatch(n -> n == null || n < 0);
         if (negativo) throw new DatoInvalidoException("Las cantidades a devolver no pueden ser negativas");
 
-        vitrina.forEach((codigo, cantidad) -> productoRepository.findById(codigo.toUpperCase()).ifPresent(p -> {
-            p.setStock(CalculoStock.vitrina(p) + cantidad);
-            productoRepository.save(p);
+        List<Insumo> insumos = insumoRepository.findTodosParaActualizar();
+        List<String> codigos = vitrina.keySet().stream().map(String::toUpperCase).distinct().toList();
+        List<Producto> productos = codigos.isEmpty() ? List.of() : productoRepository.findParaActualizar(codigos);
+
+        productos.forEach(p -> vitrina.forEach((codigo, cantidad) -> {
+            if (codigo.equalsIgnoreCase(p.getCodigo())) p.setStock(CalculoStock.vitrina(p) + cantidad);
         }));
-        usados.forEach((insumoId, cantidad) -> insumoRepository.findById(insumoId).ifPresent(i -> {
-            i.setStock(CalculoStock.redondear(i.getStock() + cantidad));
-            insumoRepository.save(i);
-        }));
+        insumos.forEach(i -> {
+            Double cantidad = usados.get(i.getId());
+            if (cantidad != null) i.setStock(CalculoStock.redondear(i.getStock() + cantidad));
+        });
+        productoRepository.saveAll(productos);
+        insumoRepository.saveAll(insumos);
     }
 
     private CalculoStock.Resultado simular(List<ItemVentaDTO> items, List<Insumo> insumos) {

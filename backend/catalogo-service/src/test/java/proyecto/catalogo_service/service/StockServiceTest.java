@@ -52,8 +52,8 @@ class StockServiceTest {
 
     @Test
     void descontarGuardaYDevuelveMovimientos() {
-        when(insumoRepository.findAll()).thenReturn(List.of(harina));
-        when(productoRepository.findAllById(anyList())).thenReturn(List.of(torta));
+        when(insumoRepository.findTodosParaActualizar()).thenReturn(List.of(harina));
+        when(productoRepository.findParaActualizar(anyList())).thenReturn(List.of(torta));
 
         MovimientosDTO m = stockService.descontar(venta(2));
 
@@ -67,8 +67,8 @@ class StockServiceTest {
 
     @Test
     void descontarSinStockNoGuardaNada() {
-        when(insumoRepository.findAll()).thenReturn(List.of(harina));
-        when(productoRepository.findAllById(anyList())).thenReturn(List.of(torta));
+        when(insumoRepository.findTodosParaActualizar()).thenReturn(List.of(harina));
+        when(productoRepository.findParaActualizar(anyList())).thenReturn(List.of(torta));
 
         ConflictoException ex = assertThrows(ConflictoException.class, () -> stockService.descontar(venta(5)));
 
@@ -99,8 +99,8 @@ class StockServiceTest {
 
     @Test
     void devolverSumaVitrinaEInsumos() {
-        when(productoRepository.findById("TC001")).thenReturn(Optional.of(torta));
-        when(insumoRepository.findById("harina")).thenReturn(Optional.of(harina));
+        when(productoRepository.findParaActualizar(List.of("TC001"))).thenReturn(List.of(torta));
+        when(insumoRepository.findTodosParaActualizar()).thenReturn(List.of(harina));
 
         stockService.devolver(new MovimientosDTO(Map.of("TC001", 2), Map.of("harina", 75.5)));
 

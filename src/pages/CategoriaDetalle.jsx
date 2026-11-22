@@ -4,9 +4,12 @@ import { useSeo } from '../hooks/useSeo';
 import EncabezadoSeccion from '../components/molecules/EncabezadoSeccion';
 import GrillaProductos from '../components/organisms/GrillaProductos';
 import { obtenerCategoria, productosPorCategoria } from '../services/db';
+import { useTienda } from '../context/TiendaContext';
 
 // Vista /categorias/:id con los productos de una categoría
 export default function CategoriaDetalle() {
+  // Se suscribe al catálogo de la tienda: la página se vuelve a dibujar cuando llega el catálogo del servidor
+  useTienda();
   const { id } = useParams();
   const categoria = obtenerCategoria(id);
   useSeo({

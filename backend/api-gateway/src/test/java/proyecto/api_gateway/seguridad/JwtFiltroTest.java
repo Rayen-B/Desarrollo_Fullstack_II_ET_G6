@@ -96,6 +96,13 @@ class JwtFiltroTest {
     }
 
     @Test
+    void laTiendaLeeInsumosSinSesion() {
+        llamar(HttpMethod.GET, "/api/v1/insumos", null, null);
+        assertNotNull(recibido.get());
+        assertEquals(HttpStatus.UNAUTHORIZED, llamar(HttpMethod.POST, "/api/v1/insumos", null, null).getResponse().getStatusCode());
+    }
+
+    @Test
     void clienteEntraASuPerfil() {
         llamar(HttpMethod.GET, "/api/v1/usuarios/perfil", token("Cliente", 60), null);
         assertEquals("Cliente", recibido.get().getRequest().getHeaders().getFirst(JwtFiltro.USER_ROL));

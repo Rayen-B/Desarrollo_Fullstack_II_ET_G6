@@ -3,6 +3,11 @@ import { Modal } from 'react-bootstrap';
 import AdminLayout from '../../components/organisms/AdminLayout';
 import { obtenerOrdenes } from '../../services/storage';
 import { actualizarEstadoOrden, cancelarOrden, cancelarTransferenciasVencidas } from '../../services/db';
+import { modoServidor } from '../../config';
+import { useAuth } from '../../context/AuthContext';
+import { cargarOrdenesServidor, cambiarEstadoServidor, cancelarOrdenServidor, guardarOrdenEnCopia } from '../../services/ordenesServidor';
+import { cargarCatalogoServidor } from '../../services/catalogo';
+import { mensajeServidor } from '../../services/sincronizacion';
 import { formatearPlazo } from '../../utils/pago';
 import BoletaOrden from '../../components/organisms/BoletaOrden';
 import { detalleOrden, resumenProductos, entregaOrden, textoMetodoPago, numeroOrden, fechaChilena } from '../../utils/ordenes';
@@ -49,6 +54,22 @@ export default function AdminOrdenes() {
   const [ordenModal, setOrdenModal] = useState(null);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [confirmandoCancelacion, setConfirmandoCancelacion] = useState(false);
+  const [error, setError] = useState('');
+  const { usuario } = useAuth();
+
+  // Modo servidor: el cambio lo hace orden-service (cancelar le pide a Catálogo devolver el stock)
+  const cambiarEnServidor = async (accion) => {
+    try {
+      const orden = guardarOrdenEnCopia(await accion());
+      setOrdenModal(orden);
+      setError('');
+      await cargarOrdenesServidor(usuario && usuario.rol).catch(() => null);
+      cargarCatalogoServidor().catch(() => null);
+    } catch (err) {
+      setError(mensajeServidor(err));
+    }
+    setOrdenes(ordenarRecientes(obtenerOrdenes()));
+  };
 
   const verOrden = (ord) => {
     setOrdenModal(ord);
@@ -59,6 +80,10 @@ export default function AdminOrdenes() {
 
   // Transferencia recibida: la orden deja de estar "Pendiente de pago" y pasa a "Pendiente" (ya cuenta como venta)
   const confirmarPago = () => {
+    if (modoServidor()) {
+      cambiarEnServidor(() => cambiarEstadoServidor(ordenModal.id, 'Pendiente'));
+      return;
+    }
     const resp = actualizarEstadoOrden(ordenModal.id, 'Pendiente');
     if (!resp.exito) return;
     setOrdenModal(resp.orden);
@@ -67,8 +92,12 @@ export default function AdminOrdenes() {
 
   // Cancela la orden y devuelve su stock (vitrina e ingredientes)
   const confirmarCancelacion = () => {
-    const resp = cancelarOrden(ordenModal.id, 'Cancelada por la tienda');
     setConfirmandoCancelacion(false);
+    if (modoServidor()) {
+      cambiarEnServidor(() => cancelarOrdenServidor(ordenModal.id, 'Cancelada por la tienda'));
+      return;
+    }
+    const resp = cancelarOrden(ordenModal.id, 'Cancelada por la tienda');
     if (!resp.exito) return;
     setOrdenModal(resp.orden);
     setOrdenes(ordenarRecientes(obtenerOrdenes()));
@@ -83,9 +112,19 @@ export default function AdminOrdenes() {
   };
 
   useEffect(() => {
-    cancelarTransferenciasVencidas();
+    if (!modoServidor()) {
+      cancelarTransferenciasVencidas();
+      setOrdenes(ordenarRecientes(obtenerOrdenes()));
+      return undefined;
+    }
+    // En modo servidor las transferencias vencidas las cancela orden-service solo
+    let activo = true;
     setOrdenes(ordenarRecientes(obtenerOrdenes()));
-  }, []);
+    cargarOrdenesServidor(usuario && usuario.rol)
+      .then(() => { if (activo) setOrdenes(ordenarRecientes(obtenerOrdenes())); })
+      .catch((err) => { if (activo) setError(mensajeServidor(err)); });
+    return () => { activo = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ordenesFiltradas = filtrarOrdenes(ordenes, busqueda);
   const query = busqueda.toLowerCase().trim();
@@ -98,6 +137,7 @@ export default function AdminOrdenes() {
 
   return (
     <AdminLayout tituloPagina="Órdenes de Compra" tituloDocumento="Administrador - Órdenes" acciones={acciones}>
+      {error && <div className="alert alert-danger" role="alert"><i className="ti ti-alert-triangle me-1"></i> {error}</div>}
       {/* Tabla de Órdenes */}
       <div className="card shadow-sm">
         <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">

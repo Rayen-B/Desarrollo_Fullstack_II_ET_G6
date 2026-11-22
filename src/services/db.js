@@ -2,6 +2,7 @@
 import * as storage from './storage';
 import { obtenerInsumos, guardarInsumos } from './insumos';
 import { disponibleProducto, esProductoCritico, descontarVenta, devolverVenta } from '../utils/stock';
+import { textoPlano } from '../utils/descripcion';
 
 export const ESTADOS_ORDEN = ['Pendiente', 'Pendiente de pago', 'Procesando', 'Enviado', 'Cancelado', 'Pago rechazado'];
 // "Pendiente de pago" = transferencia aún no confirmada: todavía no es un ingreso
@@ -97,7 +98,7 @@ export function buscarProductos(texto) {
   const consulta = normalizar(texto);
   if (!consulta) return listarProductos();
   return listarProductos().filter((p) =>
-    normalizar([p.nombre, p.codigo, p.categoria, p.descripcion].join(' ')).includes(consulta)
+    normalizar([p.nombre, p.codigo, p.categoria, textoPlano(p.descripcion)].join(' ')).includes(consulta)
   );
 }
 

@@ -4,6 +4,8 @@ import { useSeo } from '../hooks/useSeo';
 import EncabezadoSeccion from '../components/molecules/EncabezadoSeccion';
 import GrillaProductos from '../components/organisms/GrillaProductos';
 import { listarProductos, listarCategorias, crearSlug } from '../services/db';
+import { useTienda } from '../context/TiendaContext';
+import { textoPlano } from '../utils/descripcion';
 
 // Filtra por categoría (id/slug) y por texto (nombre, código, descripción)
 export function filtrarCatalogo(productos, { categoria = '', texto = '' }) {
@@ -15,13 +17,15 @@ export function filtrarCatalogo(productos, { categoria = '', texto = '' }) {
   const consulta = normalizar(texto);
   return productos.filter((p) => {
     const coincideCategoria = !categoria || crearSlug(p.categoria) === crearSlug(categoria);
-    const coincideTexto = !consulta || normalizar([p.nombre, p.codigo, p.categoria, p.descripcion].join(' ')).includes(consulta);
+    const coincideTexto = !consulta || normalizar([p.nombre, p.codigo, p.categoria, textoPlano(p.descripcion)].join(' ')).includes(consulta);
     return coincideCategoria && coincideTexto;
   });
 }
 
 // Catálogo completo con filtros (?categoria=tortas&q=chocolate)
 export default function Productos() {
+  // Se suscribe al catálogo de la tienda: la página se vuelve a dibujar cuando llega el catálogo del servidor
+  useTienda();
   const [params, setParams] = useSearchParams();
   const categoria = params.get('categoria') || '';
   const texto = params.get('q') || '';

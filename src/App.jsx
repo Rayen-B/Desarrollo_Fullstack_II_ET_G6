@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 import { TiendaProvider } from './context/TiendaContext';
 import { cancelarTransferenciasVencidas } from './services/db';
+import { modoServidor } from './config';
 import BarraNavegacion from './components/organisms/BarraNavegacion';
 import PiePagina from './components/organisms/PiePagina';
 import ModalCarrito from './components/organisms/ModalCarrito';
@@ -127,8 +128,9 @@ export function Rutas() {
 }
 
 export default function App() {
-  // Antes de cargar el catálogo se cancelan las transferencias vencidas (devuelven su stock)
-  useState(() => cancelarTransferenciasVencidas());
+  // Modo local: antes de cargar el catálogo se cancelan las transferencias vencidas (devuelven su stock).
+  // En modo servidor lo hace orden-service cada 5 minutos.
+  useState(() => { if (!modoServidor()) cancelarTransferenciasVencidas(); });
   return (
     <AuthProvider>
       <CartProvider>

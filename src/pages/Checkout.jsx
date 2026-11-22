@@ -14,6 +14,10 @@ import TarjetaCredito from '../components/molecules/TarjetaCredito';
 import { formatearPrecio } from '../utils/formato';
 import { regionesYComunas } from '../utils/regiones';
 import { crearOrden, descontarStock } from '../services/db';
+import { modoServidor } from '../config';
+import { crearOrdenServidor, guardarOrdenEnCopia } from '../services/ordenesServidor';
+import { cargarCatalogoServidor } from '../services/catalogo';
+import { mensajeServidor } from '../services/sincronizacion';
 import { useTienda } from '../context/TiendaContext';
 import { factorDeItem } from '../utils/stock';
 
@@ -178,7 +182,47 @@ export default function Checkout() {
       motivo: resultadoSolicitado === 'rechazado' ? motivoSimulado : null
     });
     // El resultado se entrega tras una breve espera, como en una pasarela real
+    const datosPago = pago.aprobado
+      ? (datos.metodoPago === 'efectivo' && vuelto.indicado ? { pagaCon: Number(datos.pagaCon), vuelto: vuelto.vuelto }
+        : datos.metodoPago === 'tarjeta' ? { tipoTarjeta: datos.tipoTarjeta, cuotas: datos.tipoTarjeta === 'credito' ? Number(datos.cuotas) : 1, ultimos4: datos.numTarjeta.replace(/\D/g, '').slice(-4) }
+          : {})
+      : { motivoRechazo: pago.titulo || pago.motivo, codigoMotivo: pago.codigoMotivo };
+
+    const irAlResultado = (orden) => {
+      if (pago.aprobado) {
+        vaciarCarrito();
+        navigate(`/compra/exitosa/${orden.id}`);
+      } else {
+        navigate(`/compra/error/${orden.id}`, { state: { motivo: pago.motivo, codigoMotivo: pago.codigoMotivo } });
+      }
+    };
+
+    // Modo servidor: Órdenes toma los precios desde Catálogo y le pide descontar el stock (todo o nada)
+    const finalizarEnServidor = async () => {
+      try {
+        const orden = await crearOrdenServidor({
+          cliente: datos.nombre.trim(), correo: datos.correo.trim(), telefono: datos.telefono.trim(), run: datos.run.trim(),
+          entrega: textoEntrega(datos), tipoEntrega: datos.metodoEntrega, metodoPago: datos.metodoPago,
+          items: carrito.map((i) => ({ codigo: i.codigo || i.id, cantidad: i.cantidad, variante: i.variante === 'trozo' ? 'trozo' : 'completa' })),
+          pagoAprobado: pago.aprobado,
+          datosPago
+        });
+        guardarOrdenEnCopia(orden);
+        await cargarCatalogoServidor().catch(() => null);
+        irAlResultado(orden);
+      } catch (err) {
+        setProcesando(false);
+        setAviso(err.status === 409 ? `${err.message} Vuelve al carrito para ajustar tu pedido.` : mensajeServidor(err));
+        cargarCatalogoServidor().catch(() => null);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    };
+
     const finalizarPago = () => {
+    if (modoServidor()) {
+      finalizarEnServidor();
+      return;
+    }
     const items = carrito.map((i) => ({ codigo: i.codigo || i.id, nombre: i.nombre, precio: i.precio, cantidad: i.cantidad, variante: i.variante, factor: factorDeItem(i) }));
     // Con el pago aprobado se descuenta el stock (vitrina primero, luego insumos); si ya no alcanza, no se crea la orden
     let movimientoStock = null;
@@ -198,19 +242,10 @@ export default function Checkout() {
       entrega: textoEntrega(datos), tipoEntrega: datos.metodoEntrega, metodoPago: datos.metodoPago, items,
       // Transferencia: queda "Pendiente de pago" hasta que la tienda confirme el depósito
       estado: !pago.aprobado ? 'Pago rechazado' : datos.metodoPago === 'transferencia' ? 'Pendiente de pago' : 'Pendiente',
-      datosPago: pago.aprobado
-        ? (datos.metodoPago === 'efectivo' && vuelto.indicado ? { pagaCon: Number(datos.pagaCon), vuelto: vuelto.vuelto }
-          : datos.metodoPago === 'tarjeta' ? { tipoTarjeta: datos.tipoTarjeta, cuotas: datos.tipoTarjeta === 'credito' ? Number(datos.cuotas) : 1, ultimos4: datos.numTarjeta.replace(/\D/g, '').slice(-4) }
-          : {})
-        : { motivoRechazo: pago.titulo || pago.motivo, codigoMotivo: pago.codigoMotivo },
+      datosPago,
       movimientoStock
     });
-    if (pago.aprobado) {
-      vaciarCarrito();
-      navigate(`/compra/exitosa/${orden.id}`);
-    } else {
-      navigate(`/compra/error/${orden.id}`, { state: { motivo: pago.motivo, codigoMotivo: pago.codigoMotivo } });
-    }
+    irAlResultado(orden);
     };
 
     if (configuracionPago.demoraMs > 0) {

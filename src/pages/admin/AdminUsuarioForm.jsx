@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import AdminLayout from '../../components/organisms/AdminLayout';
 import FeedbackCampo, { claseValidacion } from '../../components/atoms/FeedbackCampo';
 import { useAuth } from '../../context/AuthContext';
 import { regionesYComunas } from '../../utils/regiones';
 import { validarRUN, validarEmail, validarPassword } from '../../utils/validaciones';
+import { modoServidor } from '../../config';
+import { mensajeServidor } from '../../services/sincronizacion';
+import { crearUsuarioServidor, actualizarUsuarioServidor } from '../../services/auth';
 
 const FORM_VACIO = { run: '', rol: 'Cliente', nombre: '', apellidos: '', correo: '', password: '', fechaNacimiento: '', region: '', comuna: '', direccion: '' };
 
@@ -30,18 +33,22 @@ const VALIDADORES = {
 const normalizarRun = (run) => String(run || '').replace(/[.-]/g, '').trim().toUpperCase();
 
 export default function AdminUsuarioForm() {
-  const { usuariosDB, setUsuariosDB } = useAuth();
+  const { usuariosDB, setUsuariosDB, recargarUsuariosServidor } = useAuth();
   const [searchParams] = useSearchParams();
   const runParam = searchParams.get('run');
+  const idParam = searchParams.get('id');
 
   const [usuarioEditado, setUsuarioEditado] = useState(null); // modo edición si se llega con ?run=
   const [form, setForm] = useState(FORM_VACIO);
   const [feedback, setFeedback] = useState({});
   const [alerta, setAlerta] = useState(null);
+  const formTocado = useRef(false); // true cuando la persona ya escribió algo en el formulario
 
   useEffect(() => {
-    if (!runParam) return;
-    const u = usuariosDB.find((usr) => usr.run && usr.run.toUpperCase() === runParam.trim().toUpperCase());
+    if ((!runParam && !idParam) || formTocado.current) return;
+    const u = idParam
+      ? usuariosDB.find((usr) => String(usr.id) === idParam)
+      : usuariosDB.find((usr) => usr.run && usr.run.toUpperCase() === runParam.trim().toUpperCase());
     if (!u) return;
     setUsuarioEditado(u);
     setForm({
@@ -50,18 +57,19 @@ export default function AdminUsuarioForm() {
       nombre: u.nombre || '',
       apellidos: u.apellidos || '',
       correo: u.correo || '',
-      password: u.password || '',
+      password: modoServidor() ? '' : (u.password || ''),
       fechaNacimiento: u.fechaNacimiento || '',
       region: u.region || '',
       comuna: u.comuna || '',
       direccion: u.direccion || ''
     });
-  }, [runParam]);
+  }, [runParam, idParam, usuariosDB]);
 
   const esEdicion = usuarioEditado !== null;
   const regionActual = regionesYComunas.find((r) => r.region === form.region);
 
   const cambiar = (campo) => (e) => {
+    formTocado.current = true;
     const valor = e.target.value;
     setForm((f) => (campo === 'region' ? { ...f, region: valor, comuna: '' } : { ...f, [campo]: valor }));
     if (VALIDADORES[campo]) setFeedback((fb) => ({ ...fb, [campo]: VALIDADORES[campo](valor) }));
@@ -71,7 +79,8 @@ export default function AdminUsuarioForm() {
     e.preventDefault();
     const vRun = validarRUN(form.run);
     const vCorreo = validarEmail(form.correo);
-    const vPass = validarPassword(form.password);
+    // En modo servidor, al editar se puede dejar la contraseña vacía para conservar la actual
+    const vPass = modoServidor() && esEdicion && !form.password ? { valido: true, mensaje: '' } : validarPassword(form.password);
     setFeedback((fb) => ({ ...fb, run: vRun, correo: vCorreo, password: vPass }));
 
     const todoValido = vRun.valido && vCorreo.valido && vPass.valido &&
@@ -96,11 +105,31 @@ export default function AdminUsuarioForm() {
       direccion: form.direccion.trim()
     };
 
+    if (modoServidor()) {
+      guardarUsuarioEnElServidor(nuevo);
+      return;
+    }
     // Guarda o actualiza (por RUN)
     const index = usuariosDB.findIndex((u) => u.run && u.run.toUpperCase() === nuevo.run);
     if (index !== -1) setUsuariosDB(usuariosDB.map((u, i) => (i === index ? { ...u, ...nuevo } : u)));
     else setUsuariosDB([...usuariosDB, nuevo]);
+    terminarGuardado(nuevo);
+  };
 
+  // Modo servidor: crea (POST) o edita por id (PUT). La contraseña solo viaja al servidor, que la guarda cifrada.
+  const guardarUsuarioEnElServidor = async (nuevo) => {
+    try {
+      const guardado = esEdicion ? await actualizarUsuarioServidor(usuarioEditado.id, nuevo) : await crearUsuarioServidor(nuevo);
+      await recargarUsuariosServidor();
+      if (esEdicion) setUsuarioEditado(guardado);
+      setForm((f) => ({ ...f, password: '' }));
+      terminarGuardado(nuevo);
+    } catch (err) {
+      setAlerta({ tipo: 'danger', contenido: <><i className="ti ti-alert-triangle me-1"></i> {mensajeServidor(err)}</> });
+    }
+  };
+
+  const terminarGuardado = (nuevo) => {
     setAlerta({
       tipo: 'success',
       contenido: <><i className="ti ti-check-circle me-1"></i> ¡Usuario <b>{nuevo.nombre} {nuevo.apellidos}</b> {esEdicion ? 'actualizado' : 'registrado'} exitosamente!</>

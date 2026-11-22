@@ -5,6 +5,9 @@ import AdminLayout from '../../components/organisms/AdminLayout';
 import { obtenerProductos } from '../../services/storage';
 import { obtenerInsumos, guardarInsumos, esInsumoCritico, textoCantidad, UNIDADES } from '../../services/insumos';
 import { useSoloAdmin } from '../../hooks/useSoloAdmin';
+import { modoServidor } from '../../config';
+import { guardarEnServidor } from '../../services/sincronizacion';
+import { eliminarInsumoServidor } from '../../services/catalogo';
 
 // Productos cuya receta usa el insumo
 export const productosQueUsan = (insumoId, productos) =>
@@ -29,6 +32,7 @@ export default function AdminInsumos() {
   const [busqueda, setBusqueda] = useState('');
   const [insumoAEliminar, setInsumoAEliminar] = useState(null);
   const [mostrarEliminar, setMostrarEliminar] = useState(false);
+  const [error, setError] = useState('');
   const ocultarSoloAdmin = useSoloAdmin();
 
   const texto = busqueda.toLowerCase().trim();
@@ -42,8 +46,15 @@ export default function AdminInsumos() {
   };
 
   // Solo se eliminan insumos que ninguna receta usa
-  const confirmarEliminar = () => {
+  const confirmarEliminar = async () => {
     if (!insumoAEliminar || usadoPor.length) return;
+    if (modoServidor()) {
+      setMostrarEliminar(false);
+      const resultado = await guardarEnServidor(() => eliminarInsumoServidor(insumoAEliminar.id));
+      setError(resultado.exito ? '' : resultado.mensaje);
+      setInsumos(obtenerInsumos());
+      return;
+    }
     const nuevos = insumos.filter((i) => i.id !== insumoAEliminar.id);
     guardarInsumos(nuevos);
     setInsumos(nuevos);
@@ -58,6 +69,7 @@ export default function AdminInsumos() {
 
   return (
     <AdminLayout tituloPagina="Insumos de Pastelería" tituloDocumento="Administrador - Insumos" acciones={acciones}>
+      {error && <div className="alert alert-danger" role="alert"><i className="ti ti-alert-triangle me-1"></i> {error}</div>}
       <div className="card shadow-sm">
         <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
           <h6 className="mb-0 fw-bold text-principal"><i className="ti ti-chef-hat me-1"></i> Listado de Insumos</h6>

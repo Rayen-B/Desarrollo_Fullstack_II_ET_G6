@@ -8,6 +8,9 @@ import { useSoloAdmin } from '../../hooks/useSoloAdmin';
 import { useCategorias } from '../../hooks/useCategorias';
 import { obtenerInsumos, textoCantidad } from '../../services/insumos';
 import { calcularPreparables, disponibleProducto, stockVitrina } from '../../utils/stock';
+import { guardarEnServidor } from '../../services/sincronizacion';
+import { eliminarProductoServidor, EVENTO_CATALOGO_ACTUALIZADO } from '../../services/catalogo';
+import { modoServidor } from '../../config';
 
 // crítico si lo disponible (vitrina + preparables) está en o bajo su stock crítico
 export const esStockCritico = (p, insumos = []) => disponibleProducto(p, insumos) <= (p.stockCritico || 0);
@@ -46,7 +49,8 @@ const precioTexto = (precio) => '$' + Number(precio).toLocaleString('es-CL');
 
 export default function AdminProductos() {
   const [productos, setProductos] = useState([]);
-  const [insumos] = useState(obtenerInsumos);
+  const [insumos, setInsumos] = useState(obtenerInsumos);
+  const [error, setError] = useState('');
   const [busqueda, setBusqueda] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('');   // '' = todas
   const [orden, setOrden] = useState('prioridad');               // stock crítico primero
@@ -61,7 +65,13 @@ export default function AdminProductos() {
   const [mostrarEliminar, setMostrarEliminar] = useState(false);
 
   useEffect(() => {
-    setProductos(obtenerProductos());
+    const leer = () => {
+      setProductos(obtenerProductos());
+      setInsumos(obtenerInsumos());
+    };
+    leer();
+    window.addEventListener(EVENTO_CATALOGO_ACTUALIZADO, leer);
+    return () => window.removeEventListener(EVENTO_CATALOGO_ACTUALIZADO, leer);
   }, []);
 
   const filtrados = ordenarProductos(
@@ -83,12 +93,17 @@ export default function AdminProductos() {
     setMostrarEliminar(true);
   };
 
-  const confirmarEliminar = () => {
+  const confirmarEliminar = async () => {
     if (!productoAEliminar) return;
+    setMostrarEliminar(false);
+    if (modoServidor()) {
+      const resultado = await guardarEnServidor(() => eliminarProductoServidor(productoAEliminar.codigo));
+      setError(resultado.exito ? '' : `No se pudo eliminar ${productoAEliminar.nombre}: ${resultado.mensaje}`);
+      return;
+    }
     const nuevos = productos.filter((p) => p.codigo.toUpperCase() !== productoAEliminar.codigo.toUpperCase());
     setProductos(nuevos);
     guardarProductos(nuevos);
-    setMostrarEliminar(false);
   };
 
   const acciones = (
@@ -99,6 +114,7 @@ export default function AdminProductos() {
 
   return (
     <AdminLayout tituloPagina="Inventario de Productos" tituloDocumento="Administrador - Inventario de Productos" acciones={acciones}>
+      {error && <div className="alert alert-danger" role="alert"><i className="ti ti-alert-triangle me-1"></i> {error}</div>}
       {/* Tabla de Inventario de Productos */}
       <div className="card shadow-sm">
         <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">

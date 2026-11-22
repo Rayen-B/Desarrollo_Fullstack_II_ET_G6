@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { obtenerImagen } from '../../assets/images';
 import { descuentoPorcentaje, esOferta } from '../../services/db';
 import { formatearPrecio } from '../../utils/formato';
+import { textoPlano } from '../../utils/descripcion';
 
 // Tarjeta de producto del catálogo. Recibe un producto de la base de datos (services/db.js).
 //  - producto: { codigo, nombre, categoria, precio, precioAnterior, stock, imagen, descripcion }
@@ -26,7 +27,7 @@ export default function TarjetaProducto({ producto, disponible = Number(producto
       <div className="mbody">
         <div className="mcat">{producto.categoria}</div>
         <h3 className="mtit"><Link to={urlDetalle} className="text-reset text-decoration-none">{producto.nombre}</Link></h3>
-        <div className="mdesc">{producto.descripcion}</div>
+        <div className="mdesc">{textoPlano(producto.descripcion)}</div>
         <div className="mfoot d-flex justify-content-between align-items-center gap-2">
           <div className="mprice">
             {formatearPrecio(producto.precio)}

@@ -5,6 +5,9 @@ import AdminLayout from '../../components/organisms/AdminLayout';
 import { obtenerProductos } from '../../services/storage';
 import { obtenerCategorias, guardarCategorias, categoriaDeProducto } from '../../services/categorias';
 import { obtenerImagen } from '../../assets/images';
+import { modoServidor } from '../../config';
+import { guardarEnServidor } from '../../services/sincronizacion';
+import { eliminarCategoriaServidor } from '../../services/catalogo';
 
 // Cantidad de productos del inventario que pertenecen a cada categoría
 export function contarProductosPorCategoria(productos, categorias) {
@@ -22,6 +25,7 @@ export default function AdminCategorias() {
   const [busqueda, setBusqueda] = useState('');
   const [categoriaAEliminar, setCategoriaAEliminar] = useState(null);
   const [mostrarEliminar, setMostrarEliminar] = useState(false);
+  const [error, setError] = useState('');
 
   const conteo = contarProductosPorCategoria(productos, categorias);
   // Productos que impiden eliminar la categoría
@@ -35,8 +39,15 @@ export default function AdminCategorias() {
   };
 
   // Solo se eliminan categorías sin productos
-  const confirmarEliminar = () => {
+  const confirmarEliminar = async () => {
     if (!categoriaAEliminar || productosDe(categoriaAEliminar)) return;
+    if (modoServidor()) {
+      setMostrarEliminar(false);
+      const resultado = await guardarEnServidor(() => eliminarCategoriaServidor(categoriaAEliminar.id));
+      setError(resultado.exito ? '' : resultado.mensaje);
+      setCategorias(obtenerCategorias());
+      return;
+    }
     const nuevas = categorias.filter((c) => c.id !== categoriaAEliminar.id);
     guardarCategorias(nuevas);
     setCategorias(nuevas);
@@ -53,6 +64,7 @@ export default function AdminCategorias() {
 
   return (
     <AdminLayout tituloPagina="Categorías de Productos" tituloDocumento="Administrador - Categorías" acciones={acciones}>
+      {error && <div className="alert alert-danger" role="alert"><i className="ti ti-alert-triangle me-1"></i> {error}</div>}
       <div className="card shadow-sm">
         <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
           <h6 className="mb-0 fw-bold text-principal"><i className="ti ti-category me-1"></i> Listado de Categorías</h6>

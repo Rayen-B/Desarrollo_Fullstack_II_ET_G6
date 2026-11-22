@@ -7,6 +7,8 @@ import { validarEmail, validarPassword } from '../../utils/validaciones';
 import { validarNombreUsuario, validarApellidos, validarDireccion } from './AdminUsuarioForm';
 import images from '../../assets/images';
 import { estiloRol } from './AdminUsuarios';
+import { modoServidor } from '../../config';
+import { cambiarPasswordServidor } from '../../services/auth';
 
 // Validación del cambio de contraseña: la actual debe coincidir y la nueva cumplir las reglas
 export function validarCambioPassword({ actual, nueva, confirmar }, passwordGuardada) {
@@ -68,25 +70,38 @@ export default function AdminPerfil() {
       comuna: datos.comuna,
       direccion: datos.direccion.trim()
     });
-    setAlertaDatos(res.exito
+    // Modo local: el resultado llega al instante. Modo servidor: llega una promesa con el mismo formato.
+    const mostrar = (r) => setAlertaDatos(r.exito
       ? { tipo: 'success', contenido: <><i className="ti ti-check-circle me-1"></i> ¡Tus datos fueron actualizados correctamente!</> }
-      : { tipo: 'danger', contenido: <><i className="ti ti-alert-triangle me-1"></i> {res.mensaje}</> });
+      : { tipo: 'danger', contenido: <><i className="ti ti-alert-triangle me-1"></i> {r.mensaje}</> });
+    if (res && typeof res.then === 'function') res.then(mostrar);
+    else mostrar(res);
   };
 
   const cambiarPassword = (campo) => (e) => setPassword((p) => ({ ...p, [campo]: e.target.value }));
 
   const guardarPassword = (e) => {
     e.preventDefault();
-    const errores = validarCambioPassword(password, usuario.password);
+    // En modo servidor la contraseña actual no está en el navegador: la verifica el servidor
+    const errores = validarCambioPassword(password, modoServidor() ? password.actual : usuario.password);
     setFeedbackPass(errores);
     if (Object.keys(errores).length) {
       setAlertaPass({ tipo: 'danger', contenido: <><i className="ti ti-alert-triangle me-1"></i> No se pudo cambiar la contraseña.</> });
       return;
     }
+    const terminar = () => {
+      setPassword(PASSWORD_VACIA);
+      setFeedbackPass({});
+      setAlertaPass({ tipo: 'success', contenido: <><i className="ti ti-check-circle me-1"></i> ¡Contraseña actualizada correctamente!</> });
+    };
+    if (modoServidor()) {
+      cambiarPasswordServidor(password.actual, password.nueva)
+        .then(terminar)
+        .catch((err) => setAlertaPass({ tipo: 'danger', contenido: <><i className="ti ti-alert-triangle me-1"></i> {err.status === 0 ? 'No se pudo conectar con el servidor.' : err.message}</> }));
+      return;
+    }
     actualizarPerfil({ password: password.nueva });
-    setPassword(PASSWORD_VACIA);
-    setFeedbackPass({});
-    setAlertaPass({ tipo: 'success', contenido: <><i className="ti ti-check-circle me-1"></i> ¡Contraseña actualizada correctamente!</> });
+    terminar();
   };
 
   return (

@@ -11,6 +11,9 @@ export default defineConfig({
     setupFiles: './src/tests/setup.js',
     include: ['src/tests/**/*.test.{js,jsx}'],
     css: false,
+    // Las pruebas corren siempre en modo local aunque exista un .env.local con el modo servidor
+    // (las de modo servidor lo activan ellas mismas con vi.stubEnv)
+    env: { VITE_MODO_SERVIDOR: 'false', VITE_API_URL: 'http://localhost:8080' },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'json-summary'],

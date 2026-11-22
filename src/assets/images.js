@@ -1,3 +1,5 @@
+import { resolverUrlApi } from '../services/api';
+
 // Importa todas las imágenes de assets/images. La clave es la ruta sin extensión: images['menu/Torta_Trufa']
 const modulos = import.meta.glob('./images/**/*.{png,jpg,jpeg,webp,jfif,svg}', {
   eager: true,
@@ -18,6 +20,7 @@ export default images;
 export function obtenerImagen(ruta) {
   if (!ruta) return images.imgc1;
   if (/^(data:|https?:|blob:)/.test(ruta)) return ruta;
+  if (ruta.startsWith('/api/')) return resolverUrlApi(ruta); // imagen subida al servidor (carpeta media)
   const clave = ruta
     .replace(/^(\.\.\/|\/)+/, '')
     .replace(/^(papitadulce\/img\/|assets\/images\/|img\/)/, '')

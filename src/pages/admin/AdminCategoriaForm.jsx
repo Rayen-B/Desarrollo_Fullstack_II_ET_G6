@@ -5,6 +5,9 @@ import FeedbackCampo, { claseValidacion } from '../../components/atoms/FeedbackC
 import { obtenerProductos, guardarProductos } from '../../services/storage';
 import { obtenerCategorias, guardarCategorias, crearIdCategoria, validarNombreCategoria } from '../../services/categorias';
 import { obtenerImagen } from '../../assets/images';
+import { modoServidor } from '../../config';
+import { guardarEnServidor } from '../../services/sincronizacion';
+import { crearCategoriaServidor, actualizarCategoriaServidor } from '../../services/catalogo';
 
 const FORM_VACIO = { nombre: '', descripcion: '' };
 const IMAGEN_POR_DEFECTO = 'imgc1';
@@ -46,6 +49,31 @@ export default function AdminCategoriaForm() {
     lector.readAsDataURL(archivo);
   };
 
+  // Modo servidor: el servidor guarda y renombra (los productos siguen ligados por id). Las fotos en base64 no se envían.
+  const guardarCategoriaEnServidor = async (nombre, formulario) => {
+    const imagenServidor = imagen && !imagen.startsWith('data:') ? imagen : (esEdicion ? categoriaEditada.imagen : IMAGEN_POR_DEFECTO);
+    const datos = { nombre, descripcion: form.descripcion.trim(), imagen: imagenServidor };
+    const resultado = await guardarEnServidor(() => (esEdicion
+      ? actualizarCategoriaServidor(categoriaEditada.id, datos)
+      : crearCategoriaServidor(datos)));
+    if (!resultado.exito) {
+      setAlerta({ tipo: 'danger', contenido: <><i className="ti ti-alert-triangle me-1"></i> {resultado.mensaje}</> });
+      return;
+    }
+    setCategorias(obtenerCategorias());
+    if (esEdicion) setCategoriaEditada(resultado.datos);
+    setAlerta({
+      tipo: 'success',
+      contenido: <><i className="ti ti-check-circle me-1"></i> ¡Categoría <strong>{resultado.datos.nombre}</strong> {esEdicion ? 'actualizada' : 'creada'} correctamente!</>
+    });
+    if (!esEdicion) {
+      setForm(FORM_VACIO);
+      setImagen(null);
+      setFeedback(null);
+      if (formulario) formulario.reset();
+    }
+  };
+
   const enviar = (e) => {
     e.preventDefault();
     const valNombre = validarNombreCategoria(form.nombre, categorias, idActual);
@@ -56,6 +84,10 @@ export default function AdminCategoriaForm() {
     }
 
     const nombre = form.nombre.trim();
+    if (modoServidor()) {
+      guardarCategoriaEnServidor(nombre, e.currentTarget);
+      return;
+    }
     let nuevas;
     if (esEdicion) {
       const actualizada = { ...categoriaEditada, nombre, descripcion: form.descripcion.trim(), imagen: imagen || categoriaEditada.imagen };

@@ -5,6 +5,7 @@ import estilosAdmin from '../../assets/css/admin/styles.css?inline';
 import { useEstilos } from '../../hooks/useEstilos';
 import { useSoloAdmin } from '../../hooks/useSoloAdmin';
 import images from '../../assets/images';
+import { modoServidor } from '../../config';
 
 const NAVEGACION = [
   { to: '/admin', icono: 'ti-dashboard', texto: 'Dashboard' },
@@ -149,7 +150,8 @@ export default function AdminLayout({
           <h5 className={`mb-0 ${claseTitulo}`}>{tituloPagina}</h5>
         </div>
 
-        {selectorRol ? (
+        {/* "Probar Rol" es solo para la demostración en modo local: en modo servidor manda el rol real del JWT */}
+        {selectorRol && !modoServidor() ? (
           <div className="d-flex align-items-center gap-3">
             <div className="dropdown">
               <button className="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">

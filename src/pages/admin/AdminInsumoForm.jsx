@@ -5,8 +5,14 @@ import FeedbackCampo, { claseValidacion } from '../../components/atoms/FeedbackC
 import { obtenerProductos } from '../../services/storage';
 import { obtenerInsumos, guardarInsumos, crearIdInsumo, validarNombreInsumo, validarCantidad, UNIDADES } from '../../services/insumos';
 import { productosQueUsan } from './AdminInsumos';
+import { modoServidor } from '../../config';
+import { guardarEnServidor } from '../../services/sincronizacion';
+import { crearInsumoServidor, actualizarInsumoServidor } from '../../services/catalogo';
+import { guardarIngrediente, listarIngredientes } from '../../services/nutricion';
+import { ALERGENOS, validarNombreIngles, describirErrorNutricion, capitalizar } from '../../utils/nutricion';
 
 const FORM_VACIO = { nombre: '', unidad: 'g', stock: '', minimo: '' };
+const NUTRI_VACIO = { nombreIngles: '', alergenos: [] };
 
 export default function AdminInsumoForm() {
   const [searchParams] = useSearchParams();
@@ -17,6 +23,9 @@ export default function AdminInsumoForm() {
   const [form, setForm] = useState(FORM_VACIO);
   const [feedback, setFeedback] = useState({});
   const [alerta, setAlerta] = useState(null);
+  // Datos nutricionales: viven en el backend (nutricion-service), no en el localStorage de la tienda
+  const [nutri, setNutri] = useState(NUTRI_VACIO);
+  const [estadoNutri, setEstadoNutri] = useState(null); // { tipo, texto } del último intento de sincronizar
 
   useEffect(() => {
     if (!idParam) return;
@@ -24,6 +33,21 @@ export default function AdminInsumoForm() {
     if (!i) return;
     setInsumoEditado(i);
     setForm({ nombre: i.nombre, unidad: i.unidad, stock: String(i.stock), minimo: String(i.minimo) });
+  }, [idParam]);
+
+  // En edición, rellena los datos nutricionales que ya tiene el servidor (si está disponible)
+  useEffect(() => {
+    if (!idParam) return undefined;
+    let activo = true;
+    listarIngredientes()
+      .then((lista) => {
+        const ing = Array.isArray(lista) ? lista.find((x) => x.insumoId === idParam) : null;
+        if (activo && ing) setNutri({ nombreIngles: ing.nombreIngles || '', alergenos: ing.alergenos || [] });
+      })
+      .catch(() => {
+        if (activo) setEstadoNutri({ tipo: 'secondary', texto: 'No se pudieron cargar los datos nutricionales (servidor no disponible).' });
+      });
+    return () => { activo = false; };
   }, [idParam]);
 
   const esEdicion = insumoEditado !== null;
@@ -45,9 +69,29 @@ export default function AdminInsumoForm() {
     if (resultado) setFeedback((f) => ({ ...f, [campo]: resultado }));
   };
 
+  const cambiarNombreIngles = (e) => {
+    const valor = e.target.value;
+    setNutri((n) => ({ ...n, nombreIngles: valor }));
+    setFeedback((f) => {
+      const { nombreIngles, ...resto } = f;
+      return valor.trim() ? { ...resto, nombreIngles: validarNombreIngles(valor) } : resto;
+    });
+  };
+
+  const alternarAlergeno = (alergeno) => () => setNutri((n) => ({
+    ...n,
+    alergenos: n.alergenos.includes(alergeno) ? n.alergenos.filter((a) => a !== alergeno) : [...n.alergenos, alergeno]
+  }));
+
   const enviar = (e) => {
     e.preventDefault();
-    const resultados = { nombre: validar('nombre', form.nombre), stock: validar('stock', form.stock), minimo: validar('minimo', form.minimo) };
+    const nombreIngles = nutri.nombreIngles.trim();
+    const resultados = {
+      nombre: validar('nombre', form.nombre),
+      stock: validar('stock', form.stock),
+      minimo: validar('minimo', form.minimo),
+      ...(nombreIngles ? { nombreIngles: validarNombreIngles(nombreIngles) } : {}) // opcional: solo se valida si lo escribe
+    };
     setFeedback(resultados);
     if (!Object.values(resultados).every((r) => r.valido)) {
       setAlerta({ tipo: 'danger', contenido: <><i className="ti ti-alert-triangle me-1"></i> Por favor verifique los campos marcados en rojo.</> });
@@ -55,17 +99,40 @@ export default function AdminInsumoForm() {
     }
 
     const datos = { nombre: form.nombre.trim(), unidad: form.unidad, stock: Number(form.stock), minimo: Number(form.minimo) };
+    const formulario = e.currentTarget;
+    if (modoServidor()) {
+      guardarInsumoEnServidor(datos, nombreIngles, formulario);
+      return;
+    }
+    const idInsumo = esEdicion ? insumoEditado.id : crearIdInsumo(datos.nombre);
     let nuevos;
     if (esEdicion) {
       const actualizado = { ...insumoEditado, ...datos };
       nuevos = insumos.map((i) => (i.id === insumoEditado.id ? actualizado : i));
       setInsumoEditado(actualizado);
     } else {
-      nuevos = [...insumos, { id: crearIdInsumo(datos.nombre), ...datos }];
+      nuevos = [...insumos, { id: idInsumo, ...datos }];
     }
     guardarInsumos(nuevos);
     setInsumos(nuevos);
+    terminarGuardado(idInsumo, datos, nombreIngles, formulario);
+  };
 
+  // Modo servidor: se espera la respuesta de Catálogo; el id del insumo lo define el servidor
+  const guardarInsumoEnServidor = async (datos, nombreIngles, formulario) => {
+    const resultado = await guardarEnServidor(() => (esEdicion
+      ? actualizarInsumoServidor(insumoEditado.id, datos)
+      : crearInsumoServidor(datos)));
+    if (!resultado.exito) {
+      setAlerta({ tipo: 'danger', contenido: <><i className="ti ti-alert-triangle me-1"></i> {resultado.mensaje}</> });
+      return;
+    }
+    setInsumos(obtenerInsumos());
+    if (esEdicion) setInsumoEditado(resultado.datos);
+    terminarGuardado(resultado.datos.id, datos, nombreIngles, formulario);
+  };
+
+  const terminarGuardado = (idInsumo, datos, nombreIngles, formulario) => {
     setAlerta({
       tipo: 'success',
       contenido: <><i className="ti ti-check-circle me-1"></i> ¡Insumo <strong>{datos.nombre}</strong> {esEdicion ? 'actualizado' : 'creado'} correctamente!</>
@@ -73,7 +140,19 @@ export default function AdminInsumoForm() {
     if (!esEdicion) {
       setForm(FORM_VACIO);
       setFeedback({});
-      e.currentTarget.reset();
+      setNutri(NUTRI_VACIO);
+      if (formulario) formulario.reset();
+    }
+
+    // El insumo ya quedó guardado en la tienda. Los datos nutricionales se envían aparte al backend
+    // y, si el servidor falla, no se pierde nada de lo anterior.
+    if (nombreIngles) {
+      setEstadoNutri({ tipo: 'info', texto: 'Guardando datos nutricionales en el servidor…' });
+      guardarIngrediente(idInsumo, { insumoId: idInsumo, nombre: datos.nombre, nombreIngles, unidad: datos.unidad, alergenos: nutri.alergenos })
+        .then(() => setEstadoNutri({ tipo: 'success', texto: 'Datos nutricionales guardados en el servidor.' }))
+        .catch((err) => setEstadoNutri({ tipo: 'warning', texto: `El insumo se guardó, pero no se pudieron guardar sus datos nutricionales: ${describirErrorNutricion(err)}` }));
+    } else {
+      setEstadoNutri(null);
     }
   };
 
@@ -143,6 +222,26 @@ export default function AdminInsumoForm() {
                 {usos.length > 0 && (
                   <p className="small text-muted mb-4"><i className="ti ti-chef-hat me-1"></i> Se usa en: {usos.map((p) => p.nombre).join(', ')}.</p>
                 )}
+                <fieldset className="border rounded p-3 mb-4" id="datos-nutricionales">
+                  <legend className="float-none w-auto px-2 fs-6 fw-semibold text-principal"><i className="ti ti-leaf me-1"></i> Datos nutricionales (Opcional)</legend>
+                  <p className="form-text small mt-0 mb-3">Se usan para calcular la información nutricional de las recetas que llevan este insumo. Si dejas vacío el nombre en inglés, no se envía nada al servidor.</p>
+                  <div className="mb-3">
+                    <label htmlFor="nombre-ingles-insumo" className="form-label">Nombre en inglés</label>
+                    <input type="text" className={'form-control' + claseValidacion(feedback.nombreIngles)} id="nombre-ingles-insumo" placeholder="Ej: flour" maxLength={60} value={nutri.nombreIngles} onChange={cambiarNombreIngles} />
+                    <div className="form-text small">Solo letras sin tildes (ej: heavy cream). Es el nombre que entiende Spoonacular.</div>
+                    <FeedbackCampo resultado={feedback.nombreIngles} />
+                  </div>
+                  <div>
+                    <span className="form-label d-block">Alérgenos que contiene</span>
+                    {[...new Set([...ALERGENOS, ...nutri.alergenos])].map((a) => (
+                      <div key={a} className="form-check form-check-inline">
+                        <input className="form-check-input" type="checkbox" id={`alergeno-${a.replace(/\s+/g, '-')}`} checked={nutri.alergenos.includes(a)} onChange={alternarAlergeno(a)} />
+                        <label className="form-check-label" htmlFor={`alergeno-${a.replace(/\s+/g, '-')}`}>{capitalizar(a)}</label>
+                      </div>
+                    ))}
+                  </div>
+                  {estadoNutri && <div className={`alert alert-${estadoNutri.tipo} py-2 small mt-3 mb-0`} role="status">{estadoNutri.texto}</div>}
+                </fieldset>
                 <div className="d-flex gap-2 justify-content-end">
                   <Link to="/admin/insumos" className="btn btn-light"><i className="ti ti-x me-1"></i> Cancelar</Link>
                   <button type="submit" className="btn btn-pasteleria px-4 fw-semibold">

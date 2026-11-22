@@ -10,6 +10,9 @@ import { useCart } from '../context/CartContext';
 import images from '../assets/images';
 import { obtenerImagen } from '../assets/images';
 import { disponiblePorFactor, FACTOR_TROZO } from '../utils/stock';
+import InfoNutricional from '../components/molecules/InfoNutricional';
+import { descripcionAHtml, textoPlano } from '../utils/descripcion';
+import '../assets/css/editor.css';
 
 export default function DetalleProducto() {
   const { id } = useParams();
@@ -27,7 +30,7 @@ export default function DetalleProducto() {
 
   useSeo({
     titulo: producto ? producto.nombre : 'Producto no encontrado',
-    descripcion: producto ? `${producto.descripcion} Compra ${producto.nombre} online en Papita Dulce.` : undefined
+    descripcion: producto ? `${textoPlano(producto.descripcion)} Compra ${producto.nombre} online en Papita Dulce.` : undefined
   });
 
   if (!producto) {
@@ -72,7 +75,7 @@ export default function DetalleProducto() {
         <Col md={6}>
           <span className="slbl mb-2">{producto.categoria}</span>
           <h1 className="stitle text-start mb-3" style={{ fontSize: '2.5rem' }}>{producto.nombre}</h1>
-          <p className="sdesc mb-4" style={{ margin: 0 }}>{producto.descripcion}</p>
+          <div className="sdesc mb-4 descripcion-producto" style={{ margin: 0 }} dangerouslySetInnerHTML={{ __html: descripcionAHtml(producto.descripcion) }} />
 
           <div className="mb-4">
             <InsigniaEstado stock={disponible} stockCritico={factor === 1 ? producto.stockCritico : undefined} />
@@ -119,6 +122,8 @@ export default function DetalleProducto() {
             <i className="fas fa-shopping-bag me-2"></i> {disponible <= 0 ? 'Agotado' : maximo <= 0 ? 'Ya tienes todo el stock en tu carrito' : 'Agregar al Carrito'}
           </button>
           {enCarrito > 0 && maximo > 0 && <p className="small text-muted mt-2 mb-0 text-center">Ya tienes {enCarrito} en tu carrito · puedes agregar {maximo} más.</p>}
+
+          <InfoNutricional codigo={producto.codigo} usarTrozo={esTorta && variante === 'trozo'} />
         </Col>
       </Row>
     </Container>

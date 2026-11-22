@@ -35,7 +35,13 @@ export default function FormLogin({ alIngresar }) {
       setMensaje({ texto: 'Revisa los campos marcados en rojo.', esError: true });
       return;
     }
-    const resp = iniciarSesion(valores.usuario, valores.password);
+    // Modo local: el resultado llega al instante. Modo servidor: llega una promesa con el mismo formato.
+    const resultado = iniciarSesion(valores.usuario, valores.password);
+    if (resultado && typeof resultado.then === 'function') resultado.then(terminarLogin);
+    else terminarLogin(resultado);
+  };
+
+  const terminarLogin = (resp) => {
     if (!resp.exito) {
       setMensaje({ texto: resp.mensaje, esError: true });
       return;

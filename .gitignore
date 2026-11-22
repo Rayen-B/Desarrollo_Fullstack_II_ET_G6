@@ -17,6 +17,7 @@ out/
 .env
 .env.*
 !.env.example
+!.env.production
 *.pem
 *.key
 
@@ -24,3 +25,7 @@ out/
 *.log
 .DS_Store
 Thumbs.db
+
+# Archivos generados al desplegar
+backend/deploy/jars/
+backend/**/media/

@@ -43,10 +43,16 @@ export default function FormRegistro() {
       setMensaje({ texto: 'Completa los campos con datos válidos.', esError: true });
       return;
     }
-    const resp = registrarUsuario({
+    // Modo local: el resultado llega al instante. Modo servidor: llega una promesa con el mismo formato.
+    const resultado = registrarUsuario({
       nombre: valores.nombre.trim(), correo: valores.correo.trim(), password: valores.password,
       region: valores.region, comuna: valores.comuna
     });
+    if (resultado && typeof resultado.then === 'function') resultado.then(terminarRegistro);
+    else terminarRegistro(resultado);
+  };
+
+  const terminarRegistro = (resp) => {
     setMensaje({ texto: resp.mensaje, esError: !resp.exito });
     if (resp.exito) {
       setValores(VACIO);

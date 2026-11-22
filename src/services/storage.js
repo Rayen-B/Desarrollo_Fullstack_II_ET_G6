@@ -1,5 +1,6 @@
 import { RECETAS_DEFAULT } from '../data/recetas';
 import { ARTICULOS_DEFAULT } from '../data/blog';
+import { modoServidor } from '../config';
 
 export const PRODUCTOS_KEY = 'pasteleria_productos_db';
 export const USERS_KEY = 'tienda_usuarios_db';
@@ -599,6 +600,8 @@ export function obtenerProductos() {
   }
   try {
     const list = JSON.parse(data);
+    // En modo servidor la lista es la copia de lo que mandó el servidor: no se completa con los productos de ejemplo
+    if (modoServidor() && Array.isArray(list)) return list;
     // Si la lista tiene menos de 10 productos, re-inicializar con el catálogo completo
     if (!Array.isArray(list) || list.length < 10) {
       localStorage.setItem(PRODUCTOS_KEY, JSON.stringify(PRODUCTOS_DEFAULT));

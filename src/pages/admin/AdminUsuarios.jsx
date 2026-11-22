@@ -4,6 +4,12 @@ import { Modal } from 'react-bootstrap';
 import AdminLayout from '../../components/organisms/AdminLayout';
 import { useAuth } from '../../context/AuthContext';
 import { useSoloAdmin } from '../../hooks/useSoloAdmin';
+import { modoServidor } from '../../config';
+import { eliminarUsuarioServidor } from '../../services/auth';
+import { mensajeServidor } from '../../services/sincronizacion';
+
+// En modo servidor los usuarios se editan por id (los clientes que se registran solos no tienen RUN)
+export const enlaceEditar = (u) => (u.id ? `/admin/usuario-form?id=${u.id}` : `/admin/usuario-form?run=${u.run || ''}`);
 
 // Color e ícono de la insignia según el rol
 export function estiloRol(rol) {
@@ -26,7 +32,8 @@ export function filtrarUsuarios(usuarios, filtro) {
 const nombreCompleto = (u) => `${u.nombre} ${u.apellidos || ''}`;
 
 export default function AdminUsuarios() {
-  const { usuario, usuariosDB, setUsuariosDB } = useAuth();
+  const { usuario, usuariosDB, setUsuariosDB, recargarUsuariosServidor } = useAuth();
+  const [error, setError] = useState('');
   const [busqueda, setBusqueda] = useState('');
   const ocultarSoloAdmin = useSoloAdmin();
 
@@ -44,7 +51,7 @@ export default function AdminUsuarios() {
 
   const pedirEliminar = (u) => {
     // Evita que el usuario conectado se elimine a sí mismo
-    if (usuario && usuario.run && u.run && usuario.run.toUpperCase() === u.run.toUpperCase()) {
+    if (usuario && ((usuario.id && u.id && usuario.id === u.id) || (usuario.run && u.run && usuario.run.toUpperCase() === u.run.toUpperCase()))) {
       alert('No puedes eliminar tu propio usuario activo actualmente conectado.');
       return;
     }
@@ -52,10 +59,20 @@ export default function AdminUsuarios() {
     setMostrarEliminar(true);
   };
 
-  const confirmarEliminar = () => {
+  const confirmarEliminar = async () => {
     if (!usuarioAEliminar) return;
-    setUsuariosDB(usuariosDB.filter((u) => u !== usuarioAEliminar));
     setMostrarEliminar(false);
+    if (modoServidor()) {
+      try {
+        await eliminarUsuarioServidor(usuarioAEliminar.id);
+        setError('');
+        await recargarUsuariosServidor();
+      } catch (err) {
+        setError(`No se pudo eliminar a ${usuarioAEliminar.nombre}: ${mensajeServidor(err)}`);
+      }
+      return;
+    }
+    setUsuariosDB(usuariosDB.filter((u) => u !== usuarioAEliminar));
   };
 
   useEffect(() => {
@@ -71,6 +88,7 @@ export default function AdminUsuarios() {
 
   return (
     <AdminLayout tituloPagina="Gestión de Usuarios y Roles" tituloDocumento="Administrador - Gestión de Usuarios" acciones={acciones}>
+      {error && <div className="alert alert-danger" role="alert"><i className="ti ti-alert-triangle me-1"></i> {error}</div>}
       <div className="alert alert-roles d-flex align-items-center mb-4 border-0 shadow-sm" role="alert">
         <div className="small">
           <b>Roles:</b>{' '}
@@ -126,7 +144,7 @@ export default function AdminUsuarios() {
                       <td className="text-end" data-label="Acciones">
                         <div className="d-inline-flex gap-2">
                           <button type="button" className="btn btn-outline-info btn-sm btn-ver-usuario" onClick={() => verUsuario(u)}><i className="ti ti-eye"></i> Ver</button>
-                          <Link to={`/admin/usuario-form?run=${u.run || ''}`} className="btn btn-outline-pasteleria btn-sm solo-admin" style={ocultarSoloAdmin}><i className="ti ti-edit"></i> Editar</Link>
+                          <Link to={enlaceEditar(u)} className="btn btn-outline-pasteleria btn-sm solo-admin" style={ocultarSoloAdmin}><i className="ti ti-edit"></i> Editar</Link>
                           <button type="button" className="btn btn-outline-danger btn-sm btn-eliminar-usuario solo-admin" style={ocultarSoloAdmin} onClick={() => pedirEliminar(u)}><i className="ti ti-trash"></i> Eliminar</button>
                         </div>
                       </td>
@@ -189,7 +207,7 @@ export default function AdminUsuarios() {
             </div>
             <div className="modal-footer bg-light border-0 py-2">
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => setMostrarFicha(false)}><i className="ti ti-x me-1"></i> Cerrar</button>
-              <Link id="modal-usr-btn-editar" to={`/admin/usuario-form?run=${usuarioModal.run || ''}`} className="btn btn-pasteleria btn-sm solo-admin" style={ocultarSoloAdmin}>
+              <Link id="modal-usr-btn-editar" to={enlaceEditar(usuarioModal)} className="btn btn-pasteleria btn-sm solo-admin" style={ocultarSoloAdmin}>
                 <i className="ti ti-edit me-1"></i> Ir a Editar
               </Link>
             </div>

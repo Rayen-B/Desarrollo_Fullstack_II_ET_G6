@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import GrillaProductos from '../organisms/GrillaProductos';
 import { listarProductos, descuentoPorcentaje, disponibleDe } from '../../services/db';
+import { useTienda } from '../../context/TiendaContext';
 
 // Productos destacados del inicio: los 6 con mayor descuento (datos de la base de datos)
 export function elegirDestacados(productos, cantidad = 6) {
@@ -12,6 +13,8 @@ export function elegirDestacados(productos, cantidad = 6) {
 }
 
 export default function Destacados() {
+  // Se suscribe al catálogo de la tienda: se vuelve a dibujar cuando llega el catálogo del servidor
+  useTienda();
   return (
     <section id="menu" aria-labelledby="tituloDestacados">
       <div className="container">

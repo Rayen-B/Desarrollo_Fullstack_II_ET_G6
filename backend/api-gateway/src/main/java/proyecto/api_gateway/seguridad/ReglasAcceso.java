@@ -19,7 +19,8 @@ public final class ReglasAcceso {
             return lectura ? Acceso.PUBLICO : Acceso.ADMINISTRADOR;
         }
         if (empieza(ruta, "/api/v1/nutricion")) return lectura ? Acceso.PUBLICO : Acceso.ADMINISTRADOR;
-        if (empieza(ruta, "/api/v1/insumos")) return lectura ? Acceso.VENDEDOR : Acceso.ADMINISTRADOR;
+        // La tienda lee los insumos para saber cuántos trozos se pueden preparar
+        if (empieza(ruta, "/api/v1/insumos")) return lectura ? Acceso.PUBLICO : Acceso.ADMINISTRADOR;
         if (empieza(ruta, "/api/v1/usuarios/perfil")) return Acceso.SESION;
         if (empieza(ruta, "/api/v1/usuarios")) return Acceso.ADMINISTRADOR;
         if (empieza(ruta, "/api/v1/reportes")) return Acceso.VENDEDOR;

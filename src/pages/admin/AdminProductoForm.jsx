@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import AdminLayout from '../../components/organisms/AdminLayout';
 import FeedbackCampo, { claseValidacion } from '../../components/atoms/FeedbackCampo';
@@ -7,6 +7,15 @@ import { validarCodigoProducto, validarPrecio, validarStock } from '../../utils/
 import { useCategorias } from '../../hooks/useCategorias';
 import { obtenerInsumos } from '../../services/insumos';
 import { calcularPreparables } from '../../utils/stock';
+import { calcularNutricion } from '../../services/nutricion';
+import { recetaParaApi, describirErrorNutricion, formatearNutriente } from '../../utils/nutricion';
+import InfoNutricional from '../../components/molecules/InfoNutricional';
+// El editor (Tiptap/ProseMirror pesa ~340 KB) se descarga solo cuando el admin abre este formulario
+const EditorDescripcion = lazy(() => import('../../components/molecules/EditorDescripcion'));
+import { modoServidor } from '../../config';
+import { guardarEnServidor } from '../../services/sincronizacion';
+import { crearProductoServidor, actualizarProductoServidor, subirFotoServidor } from '../../services/catalogo';
+import { comprimirImagen } from '../../utils/imagen';
 
 const FORM_VACIO = { codigo: '', nombre: '', categoria: '', precio: '', stock: '', stockCritico: '', descripcion: '' };
 const IMAGEN_POR_DEFECTO = 'menu/Torta_Selva_Negra';
@@ -57,10 +66,15 @@ export default function AdminProductoForm() {
   const [productoEditado, setProductoEditado] = useState(null); // modo edición si se llega con ?codigo=
   const [form, setForm] = useState(FORM_VACIO);
   const [imagenNueva, setImagenNueva] = useState(null);
+  const [archivoFoto, setArchivoFoto] = useState(null); // modo servidor: la foto se sube después de guardar el producto
+  const [guardando, setGuardando] = useState(false);
+  const [subiendoImagen, setSubiendoImagen] = useState(false);
+  const [errorImagen, setErrorImagen] = useState('');
   const [feedback, setFeedback] = useState({}); // { campo: { valido, mensaje } }
   const [alerta, setAlerta] = useState(null);   // { tipo, contenido }
   const [insumos] = useState(obtenerInsumos);
   const [receta, setReceta] = useState([]);       // [{ insumoId, cantidad }]
+  const [nutricion, setNutricion] = useState({ cargando: false, datos: null, error: null }); // cálculo en el backend
 
   useEffect(() => {
     if (!codigoParam) return;
@@ -118,16 +132,87 @@ export default function AdminProductoForm() {
   const agregarFila = () => cambiarReceta([...receta, { insumoId: '', cantidad: '' }]);
   const quitarFila = (indice) => cambiarReceta(receta.filter((_, i) => i !== indice));
 
-  const cambiarImagen = (e) => {
+  const cambiarImagen = async (e) => {
     const archivo = e.target.files[0];
     if (!archivo) return;
+    if (modoServidor()) {
+      // Modo servidor: se reduce la foto en el navegador y se sube a la carpeta media al guardar el producto
+      setSubiendoImagen(true);
+      setErrorImagen('');
+      try {
+        setArchivoFoto(await comprimirImagen(archivo));
+      } catch {
+        setArchivoFoto(null);
+        setErrorImagen('No se pudo leer la imagen. Prueba con un JPG, PNG o WEBP.');
+      } finally {
+        setSubiendoImagen(false);
+      }
+      return;
+    }
     const lector = new FileReader();
     lector.onloadend = () => setImagenNueva(lector.result);
     lector.readAsDataURL(archivo);
   };
 
+  // Pide al servidor de nutrición el cálculo de UNA unidad completa con la receta que se ve en pantalla.
+  // La primera vez usa la caché del servidor; "Recalcular" fuerza una consulta nueva.
+  const calcularInfoNutricional = async () => {
+    const items = recetaParaApi(receta);
+    const codigo = String(form.codigo || '').trim().toUpperCase();
+    if (!validarCodigoProducto(codigo).valido) {
+      setNutricion({ cargando: false, datos: null, error: 'Ingresa un código de producto válido antes de calcular.' });
+      return;
+    }
+    if (items.length === 0 || !validarReceta(receta).valido) {
+      setNutricion({ cargando: false, datos: null, error: 'Completa la receta (insumo y cantidad mayor a 0, sin repetidos) antes de calcular.' });
+      return;
+    }
+    setNutricion((n) => ({ cargando: true, datos: n.datos, error: null }));
+    try {
+      const datos = await calcularNutricion(codigo, items, Boolean(nutricion.datos));
+      setNutricion({ cargando: false, datos, error: null });
+    } catch (err) {
+      setNutricion((n) => ({ cargando: false, datos: n.datos, error: describirErrorNutricion(err) }));
+    }
+  };
+
+  const limpiarFormulario = (formulario) => {
+    setForm(FORM_VACIO);
+    setFeedback({});
+    setReceta([]);
+    setImagenNueva(null);
+    setArchivoFoto(null);
+    if (formulario) formulario.reset();
+  };
+
+  // Modo servidor: crea (POST) o edita (PUT), sube la foto si hay una nueva y recién ahí avisa que se guardó
+  const guardarEnElServidor = async (producto, formulario) => {
+    setGuardando(true);
+    const resultado = await guardarEnServidor(async () => {
+      const cuerpo = { ...producto, precioAnterior: productoEditado ? productoEditado.precioAnterior : null };
+      const guardado = esEdicion ? await actualizarProductoServidor(cuerpo) : await crearProductoServidor(cuerpo);
+      return archivoFoto ? subirFotoServidor(guardado.codigo, archivoFoto) : guardado;
+    });
+    setGuardando(false);
+    if (!resultado.exito) {
+      setAlerta({ tipo: 'danger', contenido: <><i className="ti ti-alert-triangle me-1"></i> {resultado.mensaje}</> });
+      return;
+    }
+    setAlerta({
+      tipo: 'success',
+      contenido: <><i className="ti ti-check-circle me-1"></i> ¡Producto <strong>{producto.nombre}</strong> {esEdicion ? 'actualizado' : 'guardado'} correctamente!</>
+    });
+    if (esEdicion) {
+      setProductoEditado(resultado.datos);
+      setArchivoFoto(null);
+    } else {
+      limpiarFormulario(formulario);
+    }
+  };
+
   const enviar = (e) => {
     e.preventDefault();
+    const formulario = e.currentTarget;
     const valCodigo = validarCodigoProducto(form.codigo);
     const valPrecio = validarPrecio(form.precio);
     const valStock = validarStock(form.stock);
@@ -154,6 +239,10 @@ export default function AdminProductoForm() {
       // si no se sube una foto nueva se conserva la anterior
       imagen: imagenNueva || (productoEditado && productoEditado.imagen) || IMAGEN_POR_DEFECTO
     };
+    if (modoServidor()) {
+      guardarEnElServidor(producto, formulario);
+      return;
+    }
     guardarProducto(producto);
 
     setAlerta({
@@ -161,13 +250,7 @@ export default function AdminProductoForm() {
       contenido: <><i className="ti ti-check-circle me-1"></i> ¡Producto <strong>{producto.nombre}</strong> {esEdicion ? 'actualizado' : 'guardado'} correctamente!</>
     });
     // Si es un registro nuevo se limpia el formulario y los colores de validación
-    if (!esEdicion) {
-      setForm(FORM_VACIO);
-      setFeedback({});
-      setReceta([]);
-      setImagenNueva(null);
-      e.currentTarget.reset();
-    }
+    if (!esEdicion) limpiarFormulario(formulario);
   };
 
   const acciones = (
@@ -250,6 +333,9 @@ export default function AdminProductoForm() {
                     <label htmlFor="imagen" className="form-label">Imagen (Opcional)</label>
                     <input type="file" className="form-control" id="imagen" accept="image/*" onChange={cambiarImagen} />
                     <div className="form-text small">Opcional.</div>
+                    {subiendoImagen && <div className="small text-muted mt-1" role="status">Preparando imagen…</div>}
+                    {archivoFoto && !subiendoImagen && <div className="small text-success mt-1">La imagen se subirá al servidor al guardar el producto.</div>}
+                    {errorImagen && <div className="small text-danger mt-1" role="alert">{errorImagen}</div>}
                   </div>
                 </div>
                 {/* Receta */}
@@ -277,20 +363,34 @@ export default function AdminProductoForm() {
                       {form.stock !== '' && <> Disponible total: <strong className="text-principal">{(parseInt(form.stock, 10) || 0) + preparables}</strong>.</>}
                     </div>
                   )}
+                  {receta.length > 0 && (
+                    <div className="mt-3" id="bloque-nutricion">
+                      <button type="button" id="btn-calcular-nutricion" className="btn btn-outline-pasteleria btn-sm" disabled={nutricion.cargando} onClick={calcularInfoNutricional}>
+                        <i className="ti ti-leaf me-1"></i> {nutricion.cargando ? 'Calculando…' : nutricion.datos ? 'Recalcular información nutricional' : 'Calcular información nutricional'}
+                      </button>
+                      {nutricion.error && <div className="text-danger small mt-2" role="alert">{nutricion.error}</div>}
+                      {nutricion.datos && (
+                        <>
+                          <InfoNutricional datos={nutricion.datos} />
+                          {nutricion.datos.porTrozo && (
+                            <p className="small text-muted mt-2 mb-0">Por trozo (1/4): <strong>{formatearNutriente(nutricion.datos.porTrozo.calorias)} kcal</strong>. Se guarda en el servidor y se muestra en la ficha del producto.</p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {/* Descripción */}
                 <div className="mb-4">
                   <label htmlFor="descripcion" className="form-label">Descripción (Opcional)</label>
-                  <textarea className="form-control" id="descripcion" rows="3" placeholder="Descripción del producto..." maxLength={500} value={form.descripcion} onChange={cambiar('descripcion')}></textarea>
-                  <div className="d-flex justify-content-between form-text small">
-                    <span>Opcional.</span>
-                    <span id="contador-desc">{form.descripcion.length} / 500 caracteres</span>
-                  </div>
+                  <Suspense fallback={<div className="form-text small" role="status">Cargando editor…</div>}>
+                    <EditorDescripcion valor={form.descripcion} onCambio={(html) => setForm((f) => ({ ...f, descripcion: html }))} />
+                  </Suspense>
                 </div>
                 {/* Botones */}
                 <div className="d-flex gap-2 justify-content-end">
                   <Link to="/admin/productos" className="btn btn-light"><i className="ti ti-x me-1"></i> Cancelar</Link>
-                  <button type="submit" className="btn btn-pasteleria px-4 fw-semibold">
+                  <button type="submit" className="btn btn-pasteleria px-4 fw-semibold" disabled={subiendoImagen || guardando}>
                     <i className="ti ti-device-floppy me-1"></i> {esEdicion ? 'GUARDAR CAMBIOS' : 'GUARDAR PRODUCTO'}
                   </button>
                 </div>

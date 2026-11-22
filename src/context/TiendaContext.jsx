@@ -3,6 +3,8 @@ import { useCart } from './CartContext';
 import { obtenerProductos, PRODUCTOS_KEY } from '../services/storage';
 import { obtenerInsumos, INSUMOS_KEY } from '../services/insumos';
 import { maximoAgregable, FACTOR_TROZO } from '../utils/stock';
+import { modoServidor } from '../config';
+import { cargarCatalogoServidor, EVENTO_CATALOGO_ACTUALIZADO } from '../services/catalogo';
 
 const leerCatalogo = () => ({ productos: obtenerProductos(), insumos: obtenerInsumos() });
 const factorDe = (variante) => (variante === 'trozo' ? FACTOR_TROZO : 1);
@@ -17,6 +19,15 @@ export function TiendaProvider({ children }) {
   // Productos e insumos actuales (para saber qué está disponible)
   const [catalogo, setCatalogo] = useState(leerCatalogo);
   const recargarCatalogo = useCallback(() => setCatalogo(leerCatalogo()), []);
+
+  // Modo servidor: al abrir la tienda se trae el catálogo del servidor (productos con su stock, categorías e insumos).
+  // Cada vez que se guarda algo en el servidor se vuelve a traer y la tienda se actualiza con este evento.
+  useEffect(() => {
+    if (!modoServidor()) return undefined;
+    window.addEventListener(EVENTO_CATALOGO_ACTUALIZADO, recargarCatalogo);
+    cargarCatalogoServidor().catch(() => { /* sin servidor se usa la última copia guardada en este navegador */ });
+    return () => window.removeEventListener(EVENTO_CATALOGO_ACTUALIZADO, recargarCatalogo);
+  }, [recargarCatalogo]);
 
   // Si el admin cambia el stock en otra pestaña, la tienda se actualiza
   useEffect(() => {

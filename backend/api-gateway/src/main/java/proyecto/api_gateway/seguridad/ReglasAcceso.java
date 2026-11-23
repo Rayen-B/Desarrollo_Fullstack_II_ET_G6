@@ -14,6 +14,11 @@ public final class ReglasAcceso {
         boolean lectura = HttpMethod.GET.equals(metodo);
         if (HttpMethod.OPTIONS.equals(metodo)) return Acceso.PUBLICO;
         if (empieza(ruta, "/api/v1/auth")) return Acceso.PUBLICO;
+        // Documentación Swagger (solo lectura); las llamadas de "Try it out" pasan por las reglas de abajo
+        if (empieza(ruta, "/docs") || empieza(ruta, "/swagger-ui") || ruta.equals("/swagger-ui.html")
+                || empieza(ruta, "/v3/api-docs") || empieza(ruta, "/webjars")) {
+            return HttpMethod.GET.equals(metodo) ? Acceso.PUBLICO : Acceso.BLOQUEADO;
+        }
         if (empieza(ruta, "/api/v1/productos/stock")) return Acceso.BLOQUEADO;
         if (empieza(ruta, "/api/v1/productos") || empieza(ruta, "/api/v1/categorias")) {
             return lectura ? Acceso.PUBLICO : Acceso.ADMINISTRADOR;

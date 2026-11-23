@@ -1,0 +1,24 @@
+[Unit]
+Description=Papita Dulce - orden-service (órdenes, llama a Catálogo)
+After=network.target mysql.service papita-eureka.service papita-catalogo.service
+Wants=papita-eureka.service papita-catalogo.service
+
+[Service]
+User=papita
+Group=papita
+WorkingDirectory=/opt/papita
+EnvironmentFile=/etc/papita/papita.env
+# Solo escucha dentro de la máquina: nadie puede saltarse el Gateway
+Environment=SERVER_ADDRESS=127.0.0.1
+ExecStart=/usr/bin/java -Xms128m -Xmx256m -jar /opt/papita/orden-service.jar --spring.datasource.url=${ORDEN_DB_URL}
+# Spring Boot termina con código 143 al recibir SIGTERM: es una parada normal
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

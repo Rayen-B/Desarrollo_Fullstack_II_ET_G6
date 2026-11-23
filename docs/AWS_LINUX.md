@@ -1,207 +1,149 @@
-# Despliegue en AWS con Linux (jar + systemd)
+# Despliegue en AWS (Learner Lab): EC2 + MySQL + S3 + CloudFront
 
-Guía paso a paso para publicar Papita Dulce en AWS usando **una instancia EC2 con Ubuntu Linux**,
-cada microservicio como un **.jar** controlado por **systemd**, el frontend en **S3 + CloudFront**
-y MySQL en la misma máquina o en RDS.
+```
+Navegador ──https──► CloudFront ──── /*      ──► S3 (front React, privado)
+                          │
+                          └────────── /api/*  ──► EC2 Ubuntu 24.04 (Elastic IP), puerto 8080
+                                                   ├─ api-gateway       :8080  único puerto abierto, valida el JWT
+                                                   ├─ eureka-server     :8761  solo 127.0.0.1
+                                                   ├─ usuario-service   :8081  solo 127.0.0.1
+                                                   ├─ catalogo-service  :8082  solo 127.0.0.1  (fotos en /var/lib/papita/media)
+                                                   ├─ orden-service     :8083  solo 127.0.0.1  (llama a Catálogo por Eureka)
+                                                   ├─ nutricion-service :8084  solo 127.0.0.1  (llama a Spoonacular)
+                                                   └─ MySQL             :3306  solo 127.0.0.1
+Swagger de las 4 APIs:  http://<DNS-del-EC2>:8080/swagger-ui.html
+```
 
-> Esta guía fue escrita sin poder ejecutar el despliegue real. Los comandos son estándar, pero en tu
-> primera prueba revisa con `journalctl` (sección 9) y ajusta lo que tu cuenta de estudiante restrinja.
+- El front y el API comparten el dominio de CloudFront: no hay problemas de CORS ni de HTTPS mezclado.
+- Los microservicios y MySQL solo escuchan dentro de la máquina: nadie puede saltarse el Gateway.
+- Cada servicio es un `.jar` manejado por systemd: se reinicia solo si se cae y arranca al prender el EC2.
+
+Archivos que se usan: `backend/deploy/` (scripts, systemd, variables) y `deploy/cloudfront-rutas-spa.js`.
 
 ---
 
-## 1. Qué se instala y dónde
+## 0. En tu PC: compilar los .jar y el front
 
-```
-Navegador ──https──► CloudFront ──── /*      ──► S3 (frontend estático)
-                          │
-                          └────────── /api/*  ──► EC2 Ubuntu 24.04  :8080
-                                                   ├─ api-gateway      :8080  único puerto público; valida el JWT
-                                                   ├─ eureka-server    :8761  solo 127.0.0.1
-                                                   ├─ usuario-service  :8081  solo 127.0.0.1  (login, usuarios)
-                                                   ├─ catalogo-service :8082  solo 127.0.0.1  (productos, imágenes)
-                                                   ├─ nutricion-service:8084  solo 127.0.0.1  (Spoonacular)
-                                                   └─ MySQL :3306 (local o RDS)
-```
-
-Por qué así:
-- El navegador solo conoce **un dominio** (CloudFront). Como `/api/*` va al mismo dominio, no hay problemas de CORS.
-- Solo el **gateway** escucha hacia internet. Los microservicios escuchan en `127.0.0.1`: nadie puede saltarse
-  la validación del JWT llamándolos directo.
-- Los jar se ejecutan como un usuario sin privilegios (`papita`), se reinician solos si se caen y arrancan con la máquina.
-
-## 2. Dimensionamiento
-
-| Recurso | Recomendado | Notas |
-|---|---|---|
-| EC2 | **t3.medium** (4 GB RAM) | 5 procesos Java + MySQL. Una t3.small (2 GB) puede funcionar **con swap** (sección 3). Una micro (1 GB) no alcanza |
-| Disco | 20 GB gp3 | Incluye imágenes subidas si usas la carpeta `media` |
-| SO | Ubuntu Server 24.04 LTS | Los scripts usan `apt`. En Amazon Linux 2023 cambia `apt-get install openjdk-21-jre-headless` por `dnf install java-21-amazon-corretto-headless` |
-
-## 3. La instancia EC2
-
-1. **EC2 → Launch instance** → Ubuntu Server 24.04 LTS, tipo t3.medium, tu *key pair* (`.pem`), 20 GB.
-2. **Security group** (reglas de entrada):
-   - `22` (SSH): solo **tu IP**.
-   - `8080` (gateway): lo ideal es el *prefix list* de CloudFront (`com.amazonaws.global.cloudfront.origin-facing`).
-     Si tu cuenta no lo permite, `0.0.0.0/0`: el gateway valida el JWT igual, pero queda expuesto.
-   - **No** abras 8761, 8081, 8082, 8084 ni 3306.
-3. **Elastic IP**: asóciala a la instancia. Sin ella, la IP pública (y el DNS) cambia cada vez que la detienes.
-4. Conéctate: `ssh -i clave.pem ubuntu@TU-DNS-PUBLICO`
-5. (Solo si usas 2 GB de RAM) crea 2 GB de swap:
-   ```bash
-   sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
-   sudo mkswap /swapfile && sudo swapon /swapfile
-   echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-   ```
-
-## 4. Base de datos (elige una)
-
-### Opción A: MySQL en la misma EC2 (más simple)
-```bash
-sudo apt-get update && sudo apt-get install -y mysql-server
-sudo systemctl enable --now mysql
-sudo mysql <<'SQL'
-CREATE DATABASE db_usuarios  CHARACTER SET utf8mb4;
-CREATE DATABASE db_catalogo  CHARACTER SET utf8mb4;
-CREATE DATABASE db_nutricion CHARACTER SET utf8mb4;
-CREATE USER 'papita'@'localhost' IDENTIFIED BY 'UNA_CLAVE_FUERTE';
-GRANT ALL PRIVILEGES ON db_usuarios.*  TO 'papita'@'localhost';
-GRANT ALL PRIVILEGES ON db_catalogo.*  TO 'papita'@'localhost';
-GRANT ALL PRIVILEGES ON db_nutricion.* TO 'papita'@'localhost';
-FLUSH PRIVILEGES;
-SQL
-```
-MySQL queda escuchando solo en localhost (valor por defecto en Ubuntu). Las tablas las crea **Flyway** al arrancar cada servicio.
-
-### Opción B: RDS MySQL
-RDS → MySQL 8, `db.t3.micro`, **sin acceso público**, security group que acepte `3306` **solo desde el security group de la EC2**.
-Crea las tres bases con un cliente MySQL y usa el *endpoint* de RDS en las URLs de `papita.env` (sección 6).
-En Learner Lab, comprueba que RDS esté habilitado; si no, usa la opción A.
-
-## 5. Compilar y subir los .jar
-
-En **tu equipo** (necesitas Java 21; en Windows usa WSL o Git Bash):
-```bash
+```powershell
 cd backend
-./deploy/build-jars.sh                 # deja los 5 .jar en backend/deploy/jars/
-scp -i clave.pem -r deploy ubuntu@TU-DNS-PUBLICO:~/deploy
+powershell -ExecutionPolicy Bypass -File deploy\build-jars.ps1
 ```
+Deja los 6 `.jar` en `backend\deploy\jars` (esa carpeta no se sube a GitHub).
 
-## 6. Instalar y configurar en la EC2
+```powershell
+npm run build
+```
+Deja el front en `dist\`. Usa `.env.production`: modo servidor y el API en el mismo dominio.
 
+## 1. Learner Lab
+
+1. **Start Lab** y espera el punto verde. Entra con **AWS**.
+2. En **AWS Details** → **Download PEM** (`labsuser.pem`). Guárdala fuera del proyecto.
+3. Región: **us-east-1 (N. Virginia)**.
+
+## 2. EC2
+
+1. **EC2 → Launch instance**
+   - Nombre: `papita-backend`
+   - Imagen: **Ubuntu Server 24.04 LTS**
+   - Tipo: **t3.medium** (6 procesos Java + MySQL necesitan ~3 GB)
+   - Key pair: **vockey**
+   - Disco: **20 GB** gp3
+2. **Security group** (reglas de entrada):
+   - `SSH 22`: **My IP**
+   - `Custom TCP 8080`: **0.0.0.0/0** (CloudFront llega aquí; el Gateway valida el JWT en cada llamada)
+   - Nada más: no abras 3306, 8761 ni 8081-8084.
+3. **Elastic IP**: EC2 → Elastic IPs → Allocate → Associate a `papita-backend`.
+   Sin ella la IP y el DNS cambian cada vez que se reinicia el laboratorio.
+4. Anota el **Public IPv4 DNS** (`ec2-X-X-X-X.compute-1.amazonaws.com`).
+
+## 3. Subir el backend al EC2 (desde tu PC)
+
+```powershell
+scp -i C:\ruta\labsuser.pem -r backend\deploy ubuntu@TU-DNS:~/deploy
+```
+Si dice "permissions too open", en PowerShell:
+`icacls C:\ruta\labsuser.pem /inheritance:r /grant:r "$($env:USERNAME):R"`
+
+## 4. Instalar en el EC2
+
+```powershell
+ssh -i C:\ruta\labsuser.pem ubuntu@TU-DNS
+```
+Dentro del EC2:
 ```bash
 cd ~/deploy
-sudo ./ec2-install.sh                  # instala Java 21, crea el usuario 'papita', copia los jar y las unidades systemd
-sudo nano /etc/papita/papita.env       # completa los valores (abajo)
+sudo bash ec2-install.sh
 ```
+Instala Java 21 y MySQL, crea las 4 bases, el usuario `papita` y genera solo el `JWT_SECRET` y la clave de MySQL.
 
-Valores obligatorios en `/etc/papita/papita.env`:
-
-| Variable | Qué poner |
-|---|---|
-| `DB_USER`, `DB_PASSWORD` | El usuario/clave de MySQL de la sección 4 |
-| `*_DB_URL` | Déjalas con `localhost` (opción A) o usa el endpoint de RDS |
-| `JWT_SECRET` | **Mínimo 32 caracteres.** Genera uno: `openssl rand -base64 48`. Si falta, los servicios no arrancan |
-| `ADMIN_PASSWORD` | Clave del primer administrador (usuario `admin`). Elige una fuerte |
-| `SEED_USUARIOS_DEMO` | `false` (con `true` se crean usuarios con claves públicas como `admin/admin`) |
-| `FRONTEND_URL` | `https://dxxxx.cloudfront.net` (tu dominio de CloudFront) |
-| `SPOONACULAR_API_KEY` | Tu clave de Spoonacular |
-| `SWAGGER_ENABLED` | `false` en producción |
-
-Arrancar todo (Eureka primero, luego el resto):
+Completa las dos variables que faltan:
 ```bash
-sudo ./ec2-install.sh --iniciar
+sudo nano /etc/papita/papita.env
 ```
+- `SPOONACULAR_API_KEY=` tu clave
+- `FRONTEND_URL=` déjala así por ahora; la cambias en el paso 6 con el dominio de CloudFront
 
-## 7. Comprobar que el backend funciona (antes de tocar CloudFront)
-
-Dentro de la EC2:
+Guardar en nano: `Ctrl+O`, `Enter`, `Ctrl+X`. Arrancar todo en orden:
 ```bash
-systemctl status papita-gateway papita-usuario papita-catalogo papita-nutricion --no-pager
-curl -s http://localhost:8080/actuator/health                 # {"status":"UP"}
-curl -s http://localhost:8080/api/v1/productos                # [] (catálogo vacío al inicio)
-curl -s -X POST http://localhost:8080/api/v1/auth/login \
-  -H 'Content-Type: application/json' -d '{"identificador":"admin","password":"TU_ADMIN_PASSWORD"}'
+sudo bash ec2-install.sh --iniciar
 ```
-El login debe devolver un `token`. Comprueba también que lo protegido rechaza sin token:
+
+## 5. Comprobar el backend
+
+Dentro del EC2:
 ```bash
-curl -i http://localhost:8080/api/v1/usuarios                 # debe responder 401
-curl -i http://localhost:8761                                  # solo funciona desde la propia EC2
+curl -s http://localhost:8080/api/v1/categorias | head -c 200
 ```
-Las primeras veces espera ~1 minuto: cada servicio tarda en registrarse en Eureka.
+Desde tu PC, en el navegador: `http://TU-DNS:8080/swagger-ui.html` (arriba a la derecha se elige la API).
 
-## 8. Frontend: S3 + CloudFront
+Si algo falla: `sudo journalctl -u papita-catalogo -n 80 --no-pager` (cambia `catalogo` por `usuario`, `orden`, `nutricion`, `gateway` o `eureka`).
 
-1. **S3**: crea un bucket (por ejemplo `papita-frontend-TUNOMBRE`) con **Block all public access activado**.
-2. **CloudFront → Create distribution**:
-   - Origen 1: el bucket S3, con **Origin Access Control (OAC)**. Copia la política de bucket que sugiere la consola.
-   - *Default root object*: `index.html`.
-   - *Viewer protocol policy*: Redirect HTTP to HTTPS.
-   - *Compress objects automatically*: **Sí** (comprime JS/CSS con gzip y brotli).
-   - **Páginas de error personalizadas**: códigos `403` y `404` → ruta `/index.html`, código de respuesta `200`.
-     Sin esto, al recargar `/producto/TC001` aparece un error (React Router vive en el navegador).
-3. **Segundo origen** (la API): origen personalizado con el DNS público de la EC2, protocolo **HTTP**, puerto **8080**.
-   - Crea un *behavior* con patrón `/api/*` → ese origen.
-   - Métodos permitidos: **GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE**.
-   - Cache policy: **CachingDisabled**. Origin request policy: **AllViewer** (reenvía la cabecera `Authorization`).
-   - Tiempo de espera de respuesta del origen: sube a 60 s si el cálculo con Spoonacular se corta.
-4. Publicar el frontend (en tu equipo, con el AWS CLI configurado):
+## 6. Front: S3 + CloudFront
+
+1. **S3 → Create bucket**: `papita-dulce-front-<algo-unico>`, región us-east-1, **Block all public access activado**.
+2. **Upload** → arrastra **el contenido** de `dist\` (el `index.html` y la carpeta `assets`, no la carpeta `dist` misma).
+3. **CloudFront → Functions → Create function**: nombre `rutas-spa`, pega `deploy/cloudfront-rutas-spa.js`, **Save** y **Publish**.
+4. **CloudFront → Create distribution**:
+   - Origin: el bucket S3 → **Origin access control** → Create new OAC.
+   - Viewer protocol policy: **Redirect HTTP to HTTPS**.
+   - Default root object: `index.html`.
+   - Web Application Firewall: **Do not enable**.
+   - Al crear, copia la **política del bucket** que sugiere CloudFront y pégala en S3 → bucket → Permissions → Bucket policy.
+5. En la distribución → **Origins → Create origin**: el DNS del EC2, **HTTP only**, puerto **8080**.
+6. **Behaviors → Create behavior**:
+   - Path pattern: `/api/*` → origen EC2
+   - Viewer protocol: Redirect HTTP to HTTPS
+   - Allowed methods: **GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE**
+   - Cache policy: **CachingDisabled**
+   - Origin request policy: **AllViewerExceptHostHeader** (reenvía `Authorization`)
+7. Edita el **Default (*) behavior** → Function associations → Viewer request → CloudFront Function `rutas-spa`.
+   (No uses "Error pages" para el index.html: cambiarían también los 403/404 del API.)
+8. Espera que la distribución quede **Deployed** y anota su dominio `dxxxxxxxx.cloudfront.net`.
+9. En el EC2 pon ese dominio en `FRONTEND_URL` y reinicia el Gateway:
    ```bash
-   BUCKET=papita-frontend-TUNOMBRE DISTRIBUCION=E1ABCDEF123456 ./deploy/subir-frontend.sh
+   sudo nano /etc/papita/papita.env
+   sudo systemctl restart papita-gateway
    ```
-   El script compila con `.env.production` (modo servidor, API en el mismo dominio) y sube los archivos con caché larga
-   para `assets/` y sin caché para `index.html`.
-5. Abre `https://dxxxx.cloudfront.net`, inicia sesión como `admin` y crea un producto con imagen y descripción.
+10. Abre `https://dxxxxxxxx.cloudfront.net`.
 
-> El tramo CloudFront → EC2 va por HTTP (el navegador → CloudFront sí va por HTTPS). Para cifrarlo también,
-> pon Nginx con un certificado delante del gateway; para un proyecto de curso suele bastar con restringir el
-> security group al *prefix list* de CloudFront.
+## 7. Después de publicar
 
-## 9. Operación diaria
+- Usuarios de prueba (Flyway): `admin/admin`, `alan.brito@duoc.cl`, `lola.mento@profesor.duoc.cl`, `armando.quito@gmail.com`.
+  Como el sitio es público, **cambia la clave de admin** desde "Mi perfil" y dásela al profesor en el informe.
+- Al volver a abrir el Learner Lab: Start Lab y prende el EC2 (EC2 → Instances → Start). Los servicios arrancan solos;
+  espera ~2 minutos. CloudFront y S3 no se apagan.
+- Actualizar el backend: `build-jars.ps1` → `scp` de `backend\deploy` → en el EC2 `sudo bash ec2-install.sh --iniciar`.
+- Actualizar el front: `npm run build` → subir `dist\` a S3 → CloudFront → Invalidations → `/*`.
 
-| Qué | Comando |
+## Problemas frecuentes
+
+| Síntoma | Qué revisar |
 |---|---|
-| Ver estado | `systemctl status papita-gateway --no-pager` |
-| Logs en vivo | `sudo journalctl -u papita-gateway -f` (cambia `gateway` por `usuario`, `catalogo`, `nutricion`, `eureka`) |
-| Reiniciar uno | `sudo systemctl restart papita-catalogo` |
-| Actualizar el backend | `./deploy/build-jars.sh` → `scp` de `deploy/jars` → en la EC2: `sudo ./ec2-install.sh --iniciar` |
-| Memoria | `free -m` y `ps aux --sort=-%mem \| head` |
-| Respaldo de la BD | `mysqldump -u papita -p db_usuarios > usuarios.sql` (igual con `db_catalogo`, `db_nutricion`) |
-| Respaldo de imágenes | `sudo tar czf media.tgz /var/lib/papita/media` |
-
-Al detener y encender la instancia, los servicios arrancan solos (quedaron `enabled`).
-
-## 10. Imágenes: carpeta `media` o S3
-
-- **Carpeta `media` (por defecto)**: las imágenes se guardan en `/var/lib/papita/media` y se entregan por `/api/v1/media/...`.
-  Es lo más simple, pero **se pierden si reemplazas la instancia** (haz respaldo con `tar`).
-- **S3**: en `papita.env` pon `MEDIA_ALMACEN=s3` y `MEDIA_S3_BUCKET=tu-bucket-de-imagenes`.
-  El servicio usa el rol de la instancia (en Learner Lab, `LabInstanceProfile`: asócialo al lanzar la EC2), sin claves en el código.
-  El bucket de imágenes debe poder leerse públicamente o estar detrás de CloudFront (`MEDIA_S3_URL_PUBLICA`).
-  Esta opción **no pude probarla**: valídala con una subida real.
-
-## 11. Seguridad: lista de comprobación
-
-- [ ] `JWT_SECRET` largo y aleatorio, solo en `/etc/papita/papita.env` (permisos 640, nunca en git).
-- [ ] `SEED_USUARIOS_DEMO=false` y una `ADMIN_PASSWORD` fuerte.
-- [ ] `SWAGGER_ENABLED=false` en producción (Swagger solo se alcanza dentro de la EC2: `curl localhost:8081/swagger-ui.html` o un túnel SSH).
-- [ ] Security group: solo 22 (tu IP) y 8080 (CloudFront). MySQL y los microservicios cerrados.
-- [ ] Llave `.pem` guardada con `chmod 400` y fuera del repositorio.
-- [ ] Alarma de facturación creada y recursos detenidos cuando no los uses.
-
-Límites conocidos (no están resueltos): el JWT vive en `localStorage` (dura 2 horas); el freno de fuerza bruta del login vive en
-memoria (se reinicia con el servicio); no hay envío real de correos, así que "recuperar contraseña" es solo un aviso.
-
-## 12. Problemas frecuentes
-
-| Síntoma | Causa probable | Qué hacer |
-|---|---|---|
-| El servicio se reinicia en bucle | Falta `JWT_SECRET` o es corto, o la BD no responde | `sudo journalctl -u papita-usuario -n 50` |
-| `502` / `503` desde el gateway | El microservicio aún no se registra en Eureka | Espera ~1 min; revisa `journalctl` del servicio |
-| `401` en todo el panel | Token vencido o `JWT_SECRET` distinto en gateway y usuario-service | Es el mismo archivo `papita.env`; reinicia ambos |
-| `403` al calcular nutrición | La cuenta es Cliente | Usa un Administrador o Vendedor |
-| `Access denied for user` | Clave/usuario de MySQL incorrectos | Revisa `DB_USER`, `DB_PASSWORD` y los `GRANT` |
-| Error de memoria / el proceso muere | RAM insuficiente | Crea swap o sube a t3.medium |
-| `/producto/TC001` da error al recargar | Falta la página de error 403/404 → `index.html` | Ver sección 8, paso 2 |
-| Las imágenes subidas no se ven | `/api/v1/media/*` no llega al backend | Revisa el *behavior* `/api/*` y que `MEDIA_ALMACEN` sea `local` |
-| Learner Lab: la IP cambió | Se detuvo el laboratorio sin Elastic IP | Asocia una Elastic IP y actualiza el origen de CloudFront |
+| Un servicio se reinicia en bucle | `sudo journalctl -u papita-<servicio> -n 80 --no-pager` |
+| 503 en el API | El servicio aún no se registra en Eureka: espera 1 minuto |
+| 401 en todo | `JWT_SECRET` distinto o vacío en `/etc/papita/papita.env`; reinicia usuario y gateway |
+| Out of memory | Usa t3.medium o crea swap: `sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile` |
+| Al recargar `/producto/TC001` sale error | Falta asociar la función `rutas-spa` al Default behavior |
+| Las fotos subidas no se ven | Revisa el behavior `/api/*` hacia el EC2 |
+| La IP cambió | Falta la Elastic IP; actualiza el origen de CloudFront |

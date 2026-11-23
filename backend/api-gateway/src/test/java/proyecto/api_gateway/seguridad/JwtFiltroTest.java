@@ -96,6 +96,14 @@ class JwtFiltroTest {
     }
 
     @Test
+    void swaggerSeVeSinSesionPeroNoAbreOtrasRutas() {
+        assertEquals(ReglasAcceso.Acceso.PUBLICO, ReglasAcceso.para(HttpMethod.GET, "/swagger-ui.html"));
+        assertEquals(ReglasAcceso.Acceso.PUBLICO, ReglasAcceso.para(HttpMethod.GET, "/docs/usuarios/v3/api-docs"));
+        assertEquals(ReglasAcceso.Acceso.BLOQUEADO, ReglasAcceso.para(HttpMethod.POST, "/docs/usuarios/v3/api-docs"));
+        assertEquals(ReglasAcceso.Acceso.ADMINISTRADOR, ReglasAcceso.para(HttpMethod.GET, "/api/v1/usuarios"));
+    }
+
+    @Test
     void laTiendaLeeInsumosSinSesion() {
         llamar(HttpMethod.GET, "/api/v1/insumos", null, null);
         assertNotNull(recibido.get());

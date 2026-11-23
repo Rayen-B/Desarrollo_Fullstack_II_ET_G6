@@ -1,0 +1,22 @@
+[Unit]
+Description=Papita Dulce - api-gateway (único puerto público 8080, valida el JWT)
+After=network.target mysql.service papita-eureka.service
+Wants=papita-eureka.service
+
+[Service]
+User=papita
+Group=papita
+WorkingDirectory=/opt/papita
+EnvironmentFile=/etc/papita/papita.env
+ExecStart=/usr/bin/java -Xms128m -Xmx256m -jar /opt/papita/api-gateway.jar
+# Spring Boot termina con código 143 al recibir SIGTERM: es una parada normal
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

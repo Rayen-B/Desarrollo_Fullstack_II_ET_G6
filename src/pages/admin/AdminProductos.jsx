@@ -11,6 +11,8 @@ import { calcularPreparables, disponibleProducto, stockVitrina } from '../../uti
 import { guardarEnServidor } from '../../services/sincronizacion';
 import { eliminarProductoServidor, EVENTO_CATALOGO_ACTUALIZADO } from '../../services/catalogo';
 import { modoServidor } from '../../config';
+import { descripcionAHtml, textoPlano } from '../../utils/descripcion';
+import '../../assets/css/editor.css';
 
 // crítico si lo disponible (vitrina + preparables) está en o bajo su stock crítico
 export const esStockCritico = (p, insumos = []) => disponibleProducto(p, insumos) <= (p.stockCritico || 0);
@@ -168,7 +170,7 @@ export default function AdminProductos() {
                       <td data-label="Nombre">
                         <div className="d-flex flex-column text-end">
                           <span className="fw-bold">{p.nombre}</span>
-                          <small className="text-muted mt-1">{p.descripcion || ''}</small>
+                          <small className="text-muted mt-1">{textoPlano(p.descripcion)}</small>
                         </div>
                       </td>
                       <td data-label="Categoría"><span className="badge-soft-primary">{p.categoria || 'Pastelería'}</span></td>
@@ -232,7 +234,10 @@ export default function AdminProductos() {
                 <span id="modal-prod-categoria" className="badge-soft-primary">{productoModal.categoria || 'Pastelería'}</span>
               </div>
               <h4 id="modal-prod-nombre" className="fw-bold text-principal mb-2">{productoModal.nombre}</h4>
-              <p id="modal-prod-desc" className="text-muted small mb-3">{productoModal.descripcion || 'Sin descripción disponible para este producto.'}</p>
+              {/* La descripción es HTML de Tiptap: se muestra con formato, siempre sanitizada con DOMPurify */}
+              {textoPlano(productoModal.descripcion)
+                ? <div id="modal-prod-desc" className="text-muted small mb-3 descripcion-producto" dangerouslySetInnerHTML={{ __html: descripcionAHtml(productoModal.descripcion) }} />
+                : <p id="modal-prod-desc" className="text-muted small mb-3">Sin descripción disponible para este producto.</p>}
               <div className="p-3 bg-light rounded-3 mb-3">
                 <div className="row g-2 text-center">
                   <div className="col-6 col-sm-3">

@@ -649,3 +649,24 @@ describe('Checkout (modo servidor)', () => {
     expect(JSON.parse(localStorage.getItem('papita_dulce_cart'))).toHaveLength(1);
   });
 });
+
+// ---------- Descripción en el inventario del admin ----------
+describe('Descripción en el inventario del admin', () => {
+  it('la lista muestra texto sin etiquetas y "Ver" muestra el formato sin scripts', () => {
+    vi.unstubAllEnvs();
+    localStorage.setItem('tienda_usuario_sesion', JSON.stringify(ADMIN));
+    guardarProductos(obtenerProductos().map((p) => (p.codigo === 'TC001'
+      ? { ...p, descripcion: '<p>Torta <strong>rica</strong></p><script>window.__xss=1</script>' } : p)));
+    const c = renderizar(<Rutas />, { ruta: '/admin/productos' });
+
+    const fila = [...c.querySelectorAll('tbody tr')].find((tr) => tr.textContent.includes('TC001'));
+    expect(fila.textContent).toContain('Torta rica');
+    expect(fila.textContent).not.toContain('<p>');
+
+    clic([...fila.querySelectorAll('button')].find((b) => /ver/i.test(b.textContent)));
+    const desc = document.getElementById('modal-prod-desc');
+    expect(desc.querySelector('strong').textContent).toBe('rica');
+    expect(desc.innerHTML).not.toContain('script');
+    expect(window.__xss).toBeUndefined();
+  });
+});

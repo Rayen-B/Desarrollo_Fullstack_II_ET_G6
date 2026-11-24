@@ -57,7 +57,7 @@ public class ProductoController {
     @PostMapping
     @Operation(summary = "Crear producto (admin)", description = "La descripción en HTML (Tiptap) se limpia con jsoup antes de guardarla")
     @ApiResponse(responseCode = "201", description = "Producto creado")
-    @ApiResponse(responseCode = "400", description = "Datos inválidos", content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class), examples = @ExampleObject(value = "{\"timestamp\": \"2026-11-20T12:00:00\", \"status\": 400, \"mensaje\": \"El precio debe ser mayor a 0\"}")))
+    @ApiResponse(responseCode = "400", description = "Datos inválidos", content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class), examples = @ExampleObject(value = "{\"timestamp\": \"2026-11-20T12:00:00\", \"status\": 400, \"mensaje\": \"El precio no puede ser negativo (0 = producto gratuito)\"}")))
     @ApiResponse(responseCode = "409", description = "Código repetido", content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class), examples = @ExampleObject(value = "{\"timestamp\": \"2026-11-20T12:00:00\", \"status\": 409, \"mensaje\": \"Ya existe un producto con el código TC001.\"}")))
     public ResponseEntity<ProductoResponseDTO> crear(@Valid @RequestBody ProductoRequestDTO request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(productoService.crear(request));

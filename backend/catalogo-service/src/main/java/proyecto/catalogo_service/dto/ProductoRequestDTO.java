@@ -30,7 +30,7 @@ public class ProductoRequestDTO {
 
     @Schema(example = "15900")
     @NotNull(message = "El precio es requerido")
-    @Positive(message = "El precio debe ser mayor a 0")
+    @PositiveOrZero(message = "El precio no puede ser negativo (0 = producto gratuito)")
     private Integer precio;
 
     @Schema(example = "18900")

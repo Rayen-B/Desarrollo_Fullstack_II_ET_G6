@@ -12,6 +12,7 @@ import { obtenerImagen } from '../assets/images';
 import { disponiblePorFactor, FACTOR_TROZO } from '../utils/stock';
 import InfoNutricional from '../components/molecules/InfoNutricional';
 import { descripcionAHtml, textoPlano } from '../utils/descripcion';
+import { precioVitrina } from '../utils/formato';
 import '../assets/css/editor.css';
 
 export default function DetalleProducto() {
@@ -87,8 +88,8 @@ export default function DetalleProducto() {
               <Form.Group className="mb-3">
                 <Form.Label className="flbl">Variante de Producto</Form.Label>
                 <Form.Select className="fctrl" value={variante} onChange={(e) => { setVariante(e.target.value); setCantidad(1); }}>
-                  <option value="entera">Torta Completa ({new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(producto.precio)})</option>
-                  <option value="trozo">Trozo individual ({new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(Math.round(producto.precio * 0.25))})</option>
+                  <option value="entera">Torta Completa ({precioVitrina(producto.precio)})</option>
+                  <option value="trozo">Trozo individual ({precioVitrina(Math.round(producto.precio * 0.25))})</option>
                 </Form.Select>
               </Form.Group>
             )}

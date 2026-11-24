@@ -87,6 +87,12 @@ describe('EncabezadoSeccion', () => {
 });
 
 describe('TarjetaProducto', () => {
+  it('muestra "Gratis" en vez de $0 cuando el producto no tiene costo', () => {
+    render(<MemoryRouter><TarjetaProducto producto={{ ...producto, precio: 0, precioAnterior: 0 }} /></MemoryRouter>);
+    expect(screen.getByText('Gratis')).toBeTruthy();
+    expect(screen.queryByText('$0')).toBeNull();
+  });
+
   it('muestra nombre, categoría y descripción', () => {
     render(<MemoryRouter><TarjetaProducto producto={producto} /></MemoryRouter>);
     expect(screen.getByText('Torta Panqueque')).toBeTruthy();
@@ -146,6 +152,12 @@ describe('ItemCarrito', () => {
     expect(screen.getByText('Torta Panqueque')).toBeTruthy();
     expect(screen.getByText('$16.000')).toBeTruthy();
     expect(screen.getByText('2')).toBeTruthy();
+  });
+
+  it('en el carrito un producto gratis se muestra como $0', () => {
+    render(<CartProvider><TiendaProvider><ItemCarrito item={{ ...item, precio: 0 }} /></TiendaProvider></CartProvider>);
+    expect(screen.getByText('$0')).toBeTruthy();
+    expect(screen.queryByText('Gratis')).toBeNull();
   });
 
   it('tiene botones para aumentar, disminuir y eliminar', () => {

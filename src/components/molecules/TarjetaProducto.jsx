@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { obtenerImagen } from '../../assets/images';
 import { descuentoPorcentaje, esOferta } from '../../services/db';
-import { formatearPrecio } from '../../utils/formato';
+import { formatearPrecio, precioVitrina } from '../../utils/formato';
 import { textoPlano } from '../../utils/descripcion';
 
 // Tarjeta de producto del catálogo. Recibe un producto de la base de datos (services/db.js).
@@ -30,7 +30,7 @@ export default function TarjetaProducto({ producto, disponible = Number(producto
         <div className="mdesc">{textoPlano(producto.descripcion)}</div>
         <div className="mfoot d-flex justify-content-between align-items-center gap-2">
           <div className="mprice">
-            {formatearPrecio(producto.precio)}
+            {precioVitrina(producto.precio)}
             {descuento > 0 && <> <small>{formatearPrecio(producto.precioAnterior)}</small></>}
           </div>
           {onAgregar && (sinEnteras && hayTrozos ? (

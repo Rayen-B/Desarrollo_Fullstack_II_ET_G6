@@ -63,6 +63,11 @@ describe('EtiquetaPrecio', () => {
     expect(screen.getByText(/16\.000/)).toBeTruthy();
   });
 
+  it('muestra "Gratis" si el monto es 0', () => {
+    render(<EtiquetaPrecio monto={0} />);
+    expect(screen.getByText('Gratis')).toBeTruthy();
+  });
+
   it('muestra $0 si el monto es undefined', () => {
     render(<EtiquetaPrecio />);
     expect(screen.getByText(/\$\s?0/)).toBeTruthy();

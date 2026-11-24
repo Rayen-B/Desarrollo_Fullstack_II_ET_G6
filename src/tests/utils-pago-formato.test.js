@@ -1,8 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { formatearVencimiento, formatearNumeroTarjeta, tarjetaVencida, simularPago, TARJETA_RECHAZADA, dividirEnCuotas } from '../utils/pago';
-import { formatearPrecio, precioANumero } from '../utils/formato';
+import { formatearPrecio, precioANumero, precioVitrina, esGratis } from '../utils/formato';
 
 describe('utils/formato', () => {
+  it('en la vitrina un precio 0 se muestra como "Gratis"', () => expect(precioVitrina(0)).toBe('Gratis'));
+  it('en la vitrina un precio normal se muestra en pesos', () => expect(precioVitrina(16900)).toBe('$16.900'));
+  it('en el desglose de pago un precio 0 se muestra como $0', () => expect(formatearPrecio(0)).toBe('$0'));
+  it('un precio vacío no cuenta como gratis', () => {
+    expect(esGratis(null)).toBe(false);
+    expect(esGratis(undefined)).toBe(false);
+    expect(esGratis('')).toBe(false);
+    expect(esGratis('0')).toBe(true);
+  });
   it('formatea el precio en pesos chilenos', () => expect(formatearPrecio(16900)).toBe('$16.900'));
   it('convierte texto a número', () => expect(precioANumero('$16.900')).toBe(16900));
   it('devuelve 0 con texto vacío', () => expect(precioANumero('')).toBe(0));

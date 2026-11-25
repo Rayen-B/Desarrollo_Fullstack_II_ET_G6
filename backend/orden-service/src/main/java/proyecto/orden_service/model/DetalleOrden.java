@@ -23,7 +23,7 @@ public class DetalleOrden {
     @Column(name = "codigo", nullable = false, length = 20)
     private String codigo;
 
-    @Column(name = "nombre", nullable = false, length = 80)
+    @Column(name = "nombre", nullable = false, length = 100)
     private String nombre;
 
     @Column(name = "precio", nullable = false)

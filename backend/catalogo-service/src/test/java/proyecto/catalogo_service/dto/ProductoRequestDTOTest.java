@@ -46,4 +46,22 @@ class ProductoRequestDTOTest {
     void precioEsRequerido() {
         assertEquals(1, validator.validate(producto(null)).size());
     }
+
+    @Test
+    void nombreAceptaHasta100Caracteres() {
+        ProductoRequestDTO dto = producto(1000);
+        dto.setNombre("a".repeat(100));
+        assertTrue(validator.validate(dto).isEmpty());
+        dto.setNombre("a".repeat(101));
+        assertEquals(1, validator.validate(dto).size());
+    }
+
+    @Test
+    void codigoDebeTenerEntre3y20Caracteres() {
+        ProductoRequestDTO dto = producto(1000);
+        dto.setCodigo("TC");
+        assertEquals(1, validator.validate(dto).size());
+        dto.setCodigo("A".repeat(21));
+        assertEquals(1, validator.validate(dto).size());
+    }
 }

@@ -57,7 +57,12 @@ public class UsuarioService {
         if (!passwordEncoder.matches(request.getActual(), usuario.getPasswordHash())) {
             throw new DatoInvalidoException("La contraseña actual no es correcta.");
         }
-        if (!Validaciones.passwordSegura(request.getNueva())) throw new DatoInvalidoException(AuthService.PASSWORD_DEBIL);
+        // El personal usa la misma regla con que el admin crea sus cuentas; el cliente, la del registro
+        if (Usuario.CLIENTE.equals(usuario.getRol())) {
+            if (!Validaciones.passwordSegura(request.getNueva())) throw new DatoInvalidoException(AuthService.PASSWORD_DEBIL);
+        } else if (!Validaciones.passwordAdmin(request.getNueva())) {
+            throw new DatoInvalidoException(PASSWORD_ADMIN);
+        }
         usuario.setPasswordHash(passwordEncoder.encode(request.getNueva()));
         usuarioRepository.save(usuario);
     }

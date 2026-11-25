@@ -98,6 +98,30 @@ class UsuarioServiceTest {
     }
 
     @Test
+    void personalUsaLaReglaDe4a10AlCambiarPassword() {
+        when(usuarioRepository.findById(3L)).thenReturn(Optional.of(lola));
+        when(passwordEncoder.matches("Ventas#2026", "hash-viejo")).thenReturn(true);
+
+        DatoInvalidoException ex = assertThrows(DatoInvalidoException.class,
+                () -> usuarioService.cambiarPassword(3L, new CambioPasswordDTO("Ventas#2026", "Muylarga#2026")));
+        assertTrue(ex.getMessage().contains("entre 4 y 10"));
+
+        when(passwordEncoder.encode("ab1!")).thenReturn("hash-corto");
+        usuarioService.cambiarPassword(3L, new CambioPasswordDTO("Ventas#2026", "ab1!"));
+        assertEquals("hash-corto", lola.getPasswordHash());
+    }
+
+    @Test
+    void clienteUsaLaReglaDelRegistroAlCambiarPassword() {
+        lola.setRol(Usuario.CLIENTE);
+        when(usuarioRepository.findById(3L)).thenReturn(Optional.of(lola));
+        when(passwordEncoder.matches("Ventas#2026", "hash-viejo")).thenReturn(true);
+
+        assertThrows(DatoInvalidoException.class, () -> usuarioService.cambiarPassword(3L, new CambioPasswordDTO("Ventas#2026", "ab1!")));
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
     void crearSinPasswordDa400() {
         assertThrows(DatoInvalidoException.class, () -> usuarioService.crear(admin("184561239", "")));
         verify(usuarioRepository, never()).save(any());

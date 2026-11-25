@@ -72,6 +72,8 @@ export function validarPassword(pass) {
 export function validarCodigoProducto(codigo) {
     if (!codigo || codigo.trim() === '') return { valido: false, mensaje: "El código es requerido" };
     if (codigo.trim().length < 3) return { valido: false, mensaje: "Mínimo 3 caracteres" };
+    if (codigo.trim().length > 20) return { valido: false, mensaje: "Máximo 20 caracteres" };
+    if (!/^[A-Za-z0-9]+$/.test(codigo.trim())) return { valido: false, mensaje: "Solo letras y números, sin espacios" };
     return { valido: true, mensaje: "Código válido" };
 }
 
@@ -80,6 +82,8 @@ export function validarPrecio(precio) {
     if (precio === '' || precio === null || isNaN(precio)) return { valido: false, mensaje: "El precio es requerido" };
     const num = parseFloat(precio);
     if (num < 0) return { valido: false, mensaje: "El precio no puede ser negativo" };
+    // Pesos chilenos: sin decimales
+    if (!Number.isInteger(num)) return { valido: false, mensaje: "Ingresa el precio sin decimales (pesos chilenos)" };
     return { valido: true, mensaje: num === 0 ? "Producto gratuito" : "Precio válido" };
 }
 

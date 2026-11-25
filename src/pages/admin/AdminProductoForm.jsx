@@ -286,8 +286,8 @@ export default function AdminProductoForm() {
                 {/* Código Producto */}
                 <div className="mb-3">
                   <label htmlFor="codigo" className="form-label">Código Producto <span className="text-danger">*</span></label>
-                  <input type="text" className={'form-control' + claseValidacion(feedback.codigo)} id="codigo" placeholder="Ej: TC001" minLength={3} required readOnly={esEdicion} value={form.codigo} onChange={cambiar('codigo')} />
-                  <div className="form-text small">Requerido, texto, mínimo 3 caracteres, sin límite máximo.</div>
+                  <input type="text" className={'form-control' + claseValidacion(feedback.codigo)} id="codigo" placeholder="Ej: TC001" minLength={3} maxLength={20} required readOnly={esEdicion} value={form.codigo} onChange={cambiar('codigo')} />
+                  <div className="form-text small">Requerido, de 3 a 20 letras o números.</div>
                   <FeedbackCampo resultado={feedback.codigo} />
                 </div>
                 {/* Nombre del Producto */}
@@ -311,8 +311,8 @@ export default function AdminProductoForm() {
                 <div className="row g-3 mb-3">
                   <div className="col-md-6">
                     <label htmlFor="precio" className="form-label">Precio ($) <span className="text-danger">*</span></label>
-                    <input type="number" className={'form-control' + claseValidacion(feedback.precio)} id="precio" placeholder="0" min="0" step="any" required value={form.precio} onChange={cambiar('precio')} />
-                    <div className="form-text small">Requerido.</div>
+                    <input type="number" className={'form-control' + claseValidacion(feedback.precio)} id="precio" placeholder="0" min="0" step="1" required value={form.precio} onChange={cambiar('precio')} />
+                    <div className="form-text small">Requerido, en pesos y sin decimales. 0 = producto gratuito.</div>
                     <FeedbackCampo resultado={feedback.precio} />
                   </div>
                   <div className="col-md-6">

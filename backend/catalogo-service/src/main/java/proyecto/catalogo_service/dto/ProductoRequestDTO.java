@@ -15,13 +15,13 @@ import java.util.List;
 public class ProductoRequestDTO {
 
     @Schema(description = "Solo al crear; al editar se ignora", example = "TC010")
-    @Size(max = 20, message = "El código no puede superar 20 caracteres")
+    @Size(min = 3, max = 20, message = "El código debe tener entre 3 y 20 caracteres")
     @Pattern(regexp = "[A-Za-z0-9]*", message = "El código solo puede tener letras y números")
     private String codigo;
 
     @Schema(example = "Torta de Zanahoria")
     @NotBlank(message = "El nombre es requerido")
-    @Size(min = 3, max = 80, message = "El nombre debe tener entre 3 y 80 caracteres")
+    @Size(max = 100, message = "El nombre no puede superar 100 caracteres")
     private String nombre;
 
     @Schema(description = "Nombre o id de la categoría", example = "Tortas")

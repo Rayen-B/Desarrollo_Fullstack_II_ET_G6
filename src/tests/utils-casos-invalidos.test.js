@@ -47,6 +47,18 @@ describe('Validaciones con entradas fuera del negocio', () => {
     expect(validarCodigoProducto('').valido).toBe(false);
     expect(validarCodigoProducto('ab').mensaje).toContain('3');
   });
+
+  it('validarCodigoProducto acepta como máximo 20 letras o números (igual que el servidor)', () => {
+    expect(validarCodigoProducto('A'.repeat(20)).valido).toBe(true);
+    expect(validarCodigoProducto('A'.repeat(21)).mensaje).toContain('20');
+    expect(validarCodigoProducto('TC 01').valido).toBe(false);
+    expect(validarCodigoProducto('TC-01').valido).toBe(false);
+  });
+
+  it('validarPrecio no acepta decimales (pesos chilenos)', () => {
+    expect(validarPrecio('16900.5').valido).toBe(false);
+    expect(validarPrecio(16900).valido).toBe(true);
+  });
 });
 
 describe('formatearPrecio y precioANumero', () => {

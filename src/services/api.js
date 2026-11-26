@@ -2,7 +2,7 @@
 //
 // VITE_API_URL define la URL base:
 //   - Desarrollo local:  http://localhost:8080  (valor por defecto)
-//   - AWS con CloudFront sirviendo /api/* en el mismo dominio: déjala vacía ("")
+//   - AWS: la URL del API Gateway en el EC2 (está en .env.production y se usa en "npm run build")
 import { obtenerToken, obtenerRefresh, guardarTokens, borrarToken } from './sesion';
 
 export const API_URL = String(import.meta.env.VITE_API_URL ?? 'http://localhost:8080').replace(/\/+$/, '');
